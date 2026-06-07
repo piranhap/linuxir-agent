@@ -1,0 +1,12 @@
+Jun  3 02:11:07 victim sshd[2041]: Failed password for root from 185.220.101.47 port 51022 ssh2
+Jun  3 02:11:09 victim sshd[2041]: Failed password for root from 185.220.101.47 port 51022 ssh2
+Jun  3 02:11:11 victim sshd[2043]: Failed password for root from 185.220.101.47 port 51044 ssh2
+Jun  3 02:11:13 victim sshd[2045]: Failed password for invalid user admin from 185.220.101.47 port 51066 ssh2
+Jun  3 02:11:15 victim sshd[2047]: Failed password for invalid user oracle from 185.220.101.47 port 51088 ssh2
+Jun  3 02:11:17 victim sshd[2049]: Failed password for victim from 185.220.101.47 port 51100 ssh2
+Jun  3 02:11:19 victim sshd[2051]: Failed password for victim from 185.220.101.47 port 51122 ssh2
+Jun  3 02:11:48 victim sshd[2061]: Accepted password for victim from 185.220.101.47 port 51444 ssh2
+Jun  3 02:11:48 victim sshd[2061]: pam_unix(sshd:session): session opened for user victim by (uid=0)
+Jun  3 02:13:30 victim sudo:   victim : TTY=pts/0 ; PWD=/home/victim ; USER=root ; COMMAND=/bin/bash
+Jun  3 02:13:30 victim sudo: pam_unix(sudo:session): session opened for user root by victim(uid=1000)
+Jun  3 02:19:55 victim sshd[2061]: pam_unix(sshd:session): session closed for user victim

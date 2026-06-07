@@ -1,0 +1,6 @@
+# Sample case — the synthetic post-attack Linux tree under tests/fixtures/evidence.
+# Paths are resolved relative to this file.
+case_id: demo-001
+evidence_scope:
+  - ../tests/fixtures/evidence
+workspace: ../out/demo-001
