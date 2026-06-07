@@ -1,0 +1,9 @@
+# Investigation output workspaces
+/out/
+
+# Python / uv
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/

