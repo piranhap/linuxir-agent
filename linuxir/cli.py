@@ -70,6 +70,16 @@ def _run_analyze(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    host = args.host or os.environ.get("LINUXIR_WEB_HOST", "127.0.0.1")
+    port = args.port or int(os.environ.get("LINUXIR_WEB_PORT", "8080"))
+    print(f"[web] LinuxIR Agent GUI on http://{host}:{port}  (Ctrl-C to stop)")
+    uvicorn.run("linuxir.web.server:app", host=host, port=port, reload=args.reload)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="linuxir",
@@ -105,6 +115,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Reasoning effort (subscription runtime only).",
     )
     analyze.set_defaults(func=_run_analyze)
+
+    serve = sub.add_parser("serve", help="Launch the web GUI (FastAPI intake + status).")
+    serve.add_argument("--host", default=None, help="Bind host (default 127.0.0.1 / LINUXIR_WEB_HOST).")
+    serve.add_argument("--port", type=int, default=None, help="Bind port (default 8080 / LINUXIR_WEB_PORT).")
+    serve.add_argument("--reload", action="store_true", help="Auto-reload on code changes (dev).")
+    serve.set_defaults(func=_run_serve)
 
     args = parser.parse_args(argv)
     return args.func(args)
