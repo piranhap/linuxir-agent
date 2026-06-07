@@ -27,6 +27,12 @@ DISK_TOOLS = [
     "persistence_check_cron",
     "persistence_check_systemd",
     "check_authorized_keys",
+    "persistence_parse_bash_history",
+    "persistence_check_setuid",
+    "persistence_check_rc_files",
+    "persistence_check_ld_preload",
+    "persistence_diff_passwd",
+    "persistence_parse_wtmp",
     "read_evidence_file",
     "list_directory",
     "bash_readonly",
@@ -69,6 +75,30 @@ def _h_systemd(_inp: dict, ctx: ToolContext) -> str:
 
 def _h_authkeys(_inp: dict, ctx: ToolContext) -> str:
     return disk.find_authorized_keys(_roots(ctx))
+
+
+def _h_bash_history(_inp: dict, ctx: ToolContext) -> str:
+    return disk.parse_bash_history(_roots(ctx))
+
+
+def _h_setuid(_inp: dict, ctx: ToolContext) -> str:
+    return disk.find_setuid_binaries(_roots(ctx))
+
+
+def _h_rc_files(_inp: dict, ctx: ToolContext) -> str:
+    return disk.find_rc_persistence(_roots(ctx))
+
+
+def _h_ld_preload(_inp: dict, ctx: ToolContext) -> str:
+    return disk.find_ld_preload(_roots(ctx))
+
+
+def _h_diff_passwd(_inp: dict, ctx: ToolContext) -> str:
+    return disk.diff_passwd(_roots(ctx))
+
+
+def _h_wtmp(_inp: dict, ctx: ToolContext) -> str:
+    return disk.parse_wtmp(_roots(ctx))
 
 
 def _h_read(inp: dict, _ctx: ToolContext) -> str:
@@ -185,6 +215,31 @@ def build_tools() -> list[ToolSpec]:
         ToolSpec("check_authorized_keys",
                  "List every SSH authorized_keys file under evidence (root + each home).",
                  _NO_ARGS, _h_authkeys),
+        ToolSpec("persistence_parse_bash_history",
+                 "Read every shell-history file under evidence and score each command for "
+                 "attacker behavior (download|sh, /tmp exec, persistence writes, exfil, "
+                 "anti-forensics like `history -c`). Flagged lines are annotated with why.",
+                 _NO_ARGS, _h_bash_history),
+        ToolSpec("persistence_check_setuid",
+                 "Walk evidence for setuid/setgid files, flagging setuid shells/interpreters "
+                 "and binaries in world-writable locations (/tmp, /dev/shm, /home).",
+                 _NO_ARGS, _h_setuid),
+        ToolSpec("persistence_check_rc_files",
+                 "Scan rc.local, /etc/init.d, /etc/profile.d, and per-user shell rc files "
+                 "for run-at-boot / run-at-login persistence; flags suspicious tokens.",
+                 _NO_ARGS, _h_rc_files),
+        ToolSpec("persistence_check_ld_preload",
+                 "Surface /etc/ld.so.preload and any LD_PRELOAD set in environment/profile "
+                 "files — a library-injection persistence and hooking technique.",
+                 _NO_ARGS, _h_ld_preload),
+        ToolSpec("persistence_diff_passwd",
+                 "Parse /etc/passwd and flag UID-0 accounts other than root and non-baseline "
+                 "accounts with login shells (added backdoor users).",
+                 _NO_ARGS, _h_diff_passwd),
+        ToolSpec("persistence_parse_wtmp",
+                 "Decode wtmp/btmp/utmp login records via `last`/`utmpdump` (graceful "
+                 "fallback when the binary or files are absent).",
+                 _NO_ARGS, _h_wtmp),
         ToolSpec("read_evidence_file",
                  "Read a text file at an absolute path inside evidence scope.",
                  _PATH, _h_read, path_params=("path",)),
