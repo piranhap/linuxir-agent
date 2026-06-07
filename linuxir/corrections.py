@@ -31,6 +31,15 @@ def distill(result: InvestigationResult) -> None:
     """Derive self-learning entries from an investigation's outcome."""
     cdir = result.case.corrections_dir
 
+    # Self-corrections the gateway applied during the run (vol3 retry, empty-result pivot,
+    # path recovery) — the closed learning loop, recorded for the human and next iteration.
+    for corr in getattr(result, "self_corrections", []):
+        record(
+            cdir,
+            f"Self-correction on `{corr.tool}` ({corr.trigger})",
+            f"The tool result triggered automatic recovery guidance: {corr.hint}",
+        )
+
     dropped = [f for f in result.all_findings if f.audited and not f.confirmed]
     for f in dropped:
         record(

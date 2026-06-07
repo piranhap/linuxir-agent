@@ -13,10 +13,15 @@ from ._shared import build_system
 from .base import Agent
 
 _CHECKLIST = """\
-- Protocol summary + conversations: identify external endpoints and high-volume transfers
-  (candidate exfiltration).
+- Protocol summary + conversations: identify external endpoints and high-volume transfers.
 - Beaconing: use detect_beaconing and look for near-constant inter-arrival times to one
   external IP (e.g. every ~60s) — the classic C2 signature.
+- network_detect_exfil: rank destinations by outbound bytes; large transfers are candidate
+  data exfiltration.
+- network_extract_dns / network_extract_http: C2 or exfil domains, suspicious URIs, and
+  odd User-Agents (tooling fingerprints).
+- network_extract_credentials: cleartext HTTP Basic / FTP / telnet secrets in the capture.
+- network_find_tor_exits: destinations on known Tor exit nodes (anonymized infrastructure).
 - GeoIP: only state a country the local DB returns. If geoiplookup is unavailable or the DB
   is missing, DO NOT guess a country — say it is unknown.
 Cite the exact tool output (intervals, byte counts, endpoints) behind each finding.

@@ -68,6 +68,11 @@ NETWORK_TOOLS = [
     "pcap_summary",
     "pcap_conversations",
     "detect_beaconing",
+    "network_extract_dns",
+    "network_extract_http",
+    "network_detect_exfil",
+    "network_extract_credentials",
+    "network_find_tor_exits",
     "geoip_lookup",
     "record_finding",
 ]
@@ -179,6 +184,26 @@ def _h_pcap_conv(inp: dict, _ctx: ToolContext) -> str:
 
 def _h_beaconing(inp: dict, _ctx: ToolContext) -> str:
     return network.detect_beaconing(inp["pcap"], inp.get("dest_ip"))
+
+
+def _h_dns(inp: dict, _ctx: ToolContext) -> str:
+    return network.extract_dns(inp["pcap"])
+
+
+def _h_http(inp: dict, _ctx: ToolContext) -> str:
+    return network.extract_http(inp["pcap"])
+
+
+def _h_exfil(inp: dict, _ctx: ToolContext) -> str:
+    return network.detect_exfil(inp["pcap"])
+
+
+def _h_credentials(inp: dict, _ctx: ToolContext) -> str:
+    return network.extract_credentials(inp["pcap"])
+
+
+def _h_tor(inp: dict, _ctx: ToolContext) -> str:
+    return network.find_tor_exits(inp["pcap"])
 
 
 def _h_geoip(inp: dict, _ctx: ToolContext) -> str:
@@ -375,6 +400,26 @@ def build_tools() -> list[ToolSpec]:
                   "properties": {"pcap": {"type": "string"}, "dest_ip": {"type": "string"}},
                   "required": ["pcap"], "additionalProperties": False},
                  _h_beaconing, path_params=("pcap",)),
+        ToolSpec("network_extract_dns",
+                 "Extract all DNS queries and answers from the capture (C2/exfil domains, "
+                 "DGA patterns).",
+                 _pcap_schema(), _h_dns, path_params=("pcap",)),
+        ToolSpec("network_extract_http",
+                 "Extract HTTP requests (host, URI, User-Agent) — odd UAs/hosts flag tooling "
+                 "or C2.",
+                 _pcap_schema(), _h_http, path_params=("pcap",)),
+        ToolSpec("network_detect_exfil",
+                 "Sum outbound bytes per destination IP and flag large transfers — candidate "
+                 "data exfiltration.",
+                 _pcap_schema(), _h_exfil, path_params=("pcap",)),
+        ToolSpec("network_extract_credentials",
+                 "Surface cleartext credentials in the capture (HTTP Basic auth, FTP "
+                 "USER/PASS, telnet).",
+                 _pcap_schema(), _h_credentials, path_params=("pcap",)),
+        ToolSpec("network_find_tor_exits",
+                 "Match destination IPs against a bundled known-Tor-exit prefix list — "
+                 "anonymized C2/exfil infrastructure.",
+                 _pcap_schema(), _h_tor, path_params=("pcap",)),
         ToolSpec("geoip_lookup",
                  "Geolocate an IP via the local geoiplookup DB. Returns only what the DB "
                  "says — do NOT infer a country without data.",

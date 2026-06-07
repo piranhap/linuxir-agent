@@ -25,6 +25,7 @@ from ..config import CaseConfig
 from ..findings import Finding
 from ..gateway import ToolGateway
 from ..llm import MODEL_AUDITOR
+from .. import selfcorrect
 from ..tools import build_tools
 from .auditor import audit_findings, messages_ask
 from .disk_agent import make_disk_agent
@@ -45,6 +46,7 @@ class InvestigationResult:
     all_findings: list[Finding] = field(default_factory=list)
     confirmed_findings: list[Finding] = field(default_factory=list)
     correlations: list[str] = field(default_factory=list)
+    self_corrections: list = field(default_factory=list)  # Correction entries applied
 
 
 class Coordinator:
@@ -102,6 +104,7 @@ class Coordinator:
             )
 
         result.all_findings = list(self.gateway.context.findings)
+        result.self_corrections = list(self.gateway.context.corrections)
 
         # 4. audit (Haiku verifies each claim against its cited tool output).
         ask = messages_ask(self.client, MODEL_AUDITOR)
@@ -154,10 +157,8 @@ def correlate_findings(findings: list[Finding]) -> list[str]:
                 f"Indicator {ip} corroborated across {len(agents)} agents "
                 f"({', '.join(agents)}): findings {ids}."
             )
-            # Memory-present / logs-absent → tampering signal.
-            if "memory" in agents and "log" not in agents:
-                notes.append(
-                    f"Connection to {ip} appears in memory but not in logs — "
-                    "possible log tampering; surfaced for human review."
-                )
+
+    # Cross-artifact contradiction → reconciliation (self-correction sequence 3):
+    # memory-present / logs-absent indicators are log tampering, not a contradiction to drop.
+    notes.extend(selfcorrect.reconcile(findings))
     return notes

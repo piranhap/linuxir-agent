@@ -20,6 +20,7 @@ from .audit import JSONLAuditLogger
 from .config import CaseConfig
 from .findings import Finding
 from .guardrails.constraints import ConstraintEnforcer, SpoliationViolation
+from .selfcorrect import Correction, recovery_hint
 
 BLOCKED_PREFIX = "BLOCKED by ConstraintEnforcer:"
 
@@ -31,6 +32,7 @@ class ToolContext:
     case: CaseConfig
     audit: JSONLAuditLogger
     findings: list[Finding] = field(default_factory=list)
+    corrections: list[Correction] = field(default_factory=list)
 
 
 # A handler receives the validated tool input and the shared context, returns text.
@@ -137,7 +139,18 @@ class ToolGateway:
         self.audit.log_call(
             tool=tool_name, tool_input=tool_input, decision="allowed", agent=agent
         )
-        return result if isinstance(result, str) else str(result)
+        result = result if isinstance(result, str) else str(result)
+
+        # Self-correction: if the result matches a known failure shape, record the
+        # remediation and append it so the model is prompted to recover next turn.
+        if correction := recovery_hint(tool_name, result):
+            self.context.corrections.append(correction)
+            self.audit.log_event(
+                kind="self_correction", agent=agent, tool=tool_name,
+                trigger=correction.trigger,
+            )
+            result = f"{result}\n\n[self-correction] {correction.hint}"
+        return result
 
 
 def is_blocked(result: str) -> bool:

@@ -174,6 +174,7 @@ class SubscriptionRuntime:
             self.audit.log_event(kind="agent_done", agent=agent.name, findings=len(findings))
 
         result.all_findings = list(self.gateway.context.findings)
+        result.self_corrections = list(self.gateway.context.corrections)
 
     def run(self) -> InvestigationResult:
         result = InvestigationResult(case=self.case)
