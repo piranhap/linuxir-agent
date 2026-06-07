@@ -8,19 +8,23 @@ from ._shared import build_system
 from .base import Agent
 
 _CHECKLIST = """\
-- auth.log: SSH brute force (bursts of 'Failed password'), the first 'Accepted password'
-  after them (initial access), sudo escalations, new sessions. Note the source IP(s).
+- logs_parse_auth: SSH brute force (failed-login bursts per source IP), the first Accepted
+  login after them (initial access), and sudo/su escalations. Note the source IP(s).
+- logs_parse_lastb: failed-login records from btmp (auth.log also covers this).
+- logs_parse_syslog: cron/systemd/daemon events; flagged tokens (curl|wget, /tmp, base64).
+- logs_build_timeline: merge auth + syslog into one chronological view of the intrusion.
+- logs_find_gaps: large time jumps or empty logs — a log-truncation / anti-forensics hint.
 - bash_history: attacker commands — downloads (wget/curl), chmod +x, execution from /tmp,
   cron/authorized_keys tampering, archiving + scp/rsync exfiltration, `history -c`.
 - Correlate: tie a source IP in auth.log to commands in bash_history to persistence on
   disk. A single attacker IP appearing across artifacts is strong corroboration.
-- syslog/other logs: service crashes or exploit traces around the access time.
 Cite verbatim log lines. If logs and other evidence disagree, say so — it may be tampering.
 """
 
 ROLE = (
-    "Reconstruct the intrusion timeline from logs and shell history. Read auth.log and "
-    "the relevant users' .bash_history, then correlate source IPs and commands."
+    "Reconstruct the intrusion timeline from logs and shell history. Start with "
+    "logs_parse_auth and logs_build_timeline, check logs_find_gaps for tampering, then "
+    "correlate source IPs and commands against the relevant users' .bash_history."
 )
 
 

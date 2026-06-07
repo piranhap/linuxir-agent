@@ -46,3 +46,38 @@ def malfind(memory_image: str, extra: list[str] | None = None) -> str:
 
 def netstat(memory_image: str, extra: list[str] | None = None) -> str:
     return _run_plugin(memory_image, "linux.sockstat.Sockstat", extra)
+
+
+def bash(memory_image: str, extra: list[str] | None = None) -> str:
+    return _run_plugin(memory_image, "linux.bash.Bash", extra)
+
+
+def check_modules(memory_image: str, extra: list[str] | None = None) -> str:
+    return _run_plugin(memory_image, "linux.check_modules.Check_modules", extra)
+
+
+def lsmod(memory_image: str, extra: list[str] | None = None) -> str:
+    return _run_plugin(memory_image, "linux.lsmod.Lsmod", extra)
+
+
+def cmdline(memory_image: str, extra: list[str] | None = None) -> str:
+    return _run_plugin(memory_image, "linux.cmdline.Cmdline", extra)
+
+
+def kernel_banner(memory_image: str, extra: list[str] | None = None) -> str:
+    """Tier-2 profile detection: recover the 'Linux version ...' banner from the image.
+
+    Volatility3 normally resolves the kernel itself (tier 1). When auto-detection fails,
+    the kernel banner string in the image tells you exactly which kernel/distro symbols are
+    needed (tier 2 -> match to a profile, tier 3). This uses `grep -a` so it works even
+    when vol3 is absent, and degrades gracefully if `grep` is missing.
+    """
+    res = run_binary(["grep", "-a", "-m", "5", "-o", "Linux version [^\\\\]*", memory_image])
+    if not res.get("available"):
+        return summarize(res)
+    out = (res.get("stdout") or "").strip()
+    if not out:
+        return ("[no 'Linux version' banner found in image] — auto-detection may still work; "
+                "if vol3 fails, supply symbols matching the source kernel manually.")
+    return ("[recovered kernel banner(s) — use to select vol3 symbols if auto-detect fails]\n"
+            + out)

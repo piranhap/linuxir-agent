@@ -1,3 +1,8 @@
+# Secrets — never commit a real .env (.env.template is the safe, committed stub)
+.env
+.env.*
+!.env.template
+
 # Investigation output workspaces
 /out/
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from .adapters import disk, geoip, memory, network
+from .adapters import disk, geoip, logs, memory, network
 from .adapters.base import run_binary, summarize
 from .findings import Confidence, Finding
 from .gateway import ToolContext, ToolSpec
@@ -41,12 +41,27 @@ DISK_TOOLS = [
     "disk_cat_inode",
     "record_finding",
 ]
-LOG_TOOLS = ["read_evidence_file", "list_directory", "bash_readonly", "record_finding"]
+LOG_TOOLS = [
+    "logs_parse_auth",
+    "logs_parse_lastb",
+    "logs_parse_syslog",
+    "logs_build_timeline",
+    "logs_find_gaps",
+    "read_evidence_file",
+    "list_directory",
+    "bash_readonly",
+    "record_finding",
+]
 MEMORY_TOOLS = [
+    "memory_kernel_banner",
     "memory_pslist",
     "memory_pstree",
+    "memory_cmdline",
     "memory_malfind",
     "memory_netstat",
+    "memory_bash",
+    "memory_lsmod",
+    "memory_check_modules",
     "record_finding",
 ]
 NETWORK_TOOLS = [
@@ -99,6 +114,26 @@ def _h_diff_passwd(_inp: dict, ctx: ToolContext) -> str:
 
 def _h_wtmp(_inp: dict, ctx: ToolContext) -> str:
     return disk.parse_wtmp(_roots(ctx))
+
+
+def _h_logs_auth(_inp: dict, ctx: ToolContext) -> str:
+    return logs.parse_auth(_roots(ctx))
+
+
+def _h_logs_lastb(_inp: dict, ctx: ToolContext) -> str:
+    return logs.parse_lastb(_roots(ctx))
+
+
+def _h_logs_syslog(_inp: dict, ctx: ToolContext) -> str:
+    return logs.parse_syslog(_roots(ctx))
+
+
+def _h_logs_timeline(_inp: dict, ctx: ToolContext) -> str:
+    return logs.build_timeline(_roots(ctx))
+
+
+def _h_logs_gaps(_inp: dict, ctx: ToolContext) -> str:
+    return logs.find_gaps(_roots(ctx))
 
 
 def _h_read(inp: dict, _ctx: ToolContext) -> str:
@@ -240,6 +275,28 @@ def build_tools() -> list[ToolSpec]:
                  "Decode wtmp/btmp/utmp login records via `last`/`utmpdump` (graceful "
                  "fallback when the binary or files are absent).",
                  _NO_ARGS, _h_wtmp),
+        # -- logs ----------------------------------------------------------------
+        ToolSpec("logs_parse_auth",
+                 "Parse auth.log/secure: SSH brute force (failed-login bursts per source "
+                 "IP), the first Accepted login (initial access), and sudo/su privilege "
+                 "escalation. Returns verbatim lines grouped by phase.",
+                 _NO_ARGS, _h_logs_auth),
+        ToolSpec("logs_parse_lastb",
+                 "Decode /var/log/btmp failed-login records via `lastb` (graceful "
+                 "fallback; auth.log also covers this).",
+                 _NO_ARGS, _h_logs_lastb),
+        ToolSpec("logs_parse_syslog",
+                 "Surface syslog/messages daemon, cron, and systemd events, flagging "
+                 "suspicious tokens (curl|wget, /tmp, base64, reverse shells).",
+                 _NO_ARGS, _h_logs_syslog),
+        ToolSpec("logs_build_timeline",
+                 "Merge timestamped lines from auth + syslog into one chronological "
+                 "timeline (uses plaso/log2timeline if installed, else an internal merge).",
+                 _NO_ARGS, _h_logs_timeline),
+        ToolSpec("logs_find_gaps",
+                 "Detect coverage gaps / truncation in the logs (large time jumps, empty "
+                 "files) — a possible anti-forensic tampering indicator.",
+                 _NO_ARGS, _h_logs_gaps),
         ToolSpec("read_evidence_file",
                  "Read a text file at an absolute path inside evidence scope.",
                  _PATH, _h_read, path_params=("path",)),
@@ -274,8 +331,28 @@ def build_tools() -> list[ToolSpec]:
                   "required": ["image", "inode"], "additionalProperties": False},
                  _h_disk_icat, path_params=("image",)),
         # -- memory (volatility3, graceful fallback) -----------------------------
+        ToolSpec("memory_kernel_banner",
+                 "Tier-2 profile detection: recover the 'Linux version ...' banner from a "
+                 "memory image (works without vol3). Use to pick vol3 symbols when "
+                 "auto-detection fails.",
+                 _mem_schema(), _h_vol(memory.kernel_banner), path_params=("memory_image",),
+                 arg_params=("extra",)),
         ToolSpec("memory_pslist", "volatility3 linux.pslist on a memory image.",
                  _mem_schema(), _h_vol(memory.pslist), path_params=("memory_image",),
+                 arg_params=("extra",)),
+        ToolSpec("memory_cmdline", "volatility3 linux.cmdline — full process command lines.",
+                 _mem_schema(), _h_vol(memory.cmdline), path_params=("memory_image",),
+                 arg_params=("extra",)),
+        ToolSpec("memory_bash", "volatility3 linux.bash — recover bash history from memory.",
+                 _mem_schema(), _h_vol(memory.bash), path_params=("memory_image",),
+                 arg_params=("extra",)),
+        ToolSpec("memory_lsmod", "volatility3 linux.lsmod — loaded kernel modules.",
+                 _mem_schema(), _h_vol(memory.lsmod), path_params=("memory_image",),
+                 arg_params=("extra",)),
+        ToolSpec("memory_check_modules",
+                 "volatility3 linux.check_modules — modules hidden from the module list "
+                 "(rootkit indicator).",
+                 _mem_schema(), _h_vol(memory.check_modules), path_params=("memory_image",),
                  arg_params=("extra",)),
         ToolSpec("memory_pstree", "volatility3 linux.pstree on a memory image.",
                  _mem_schema(), _h_vol(memory.pstree), path_params=("memory_image",),
