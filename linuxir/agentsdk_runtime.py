@@ -56,11 +56,13 @@ _BUILTIN_DENY = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "W
 class SubscriptionRuntime:
     """Orchestrates the specialists/auditor via the Claude Agent SDK (subscription auth)."""
 
-    def __init__(self, case: CaseConfig, *, model: str | None = None, effort: str | None = None):
+    def __init__(self, case: CaseConfig, *, model: str | None = None, effort: str | None = None,
+                 max_iterations: int = 10):
         case.ensure_workspace()
         self.case = case
         self.model = model
         self.effort = effort
+        self.max_iterations = max(1, int(max_iterations))
         self.audit = JSONLAuditLogger(case.audit_dir)
         self.gateway = ToolGateway(case, self.audit)
         self.gateway.register_all(build_tools())
@@ -158,6 +160,9 @@ class SubscriptionRuntime:
                          "beaconing and exfiltration; record findings."))
 
         for agent, task in plan:
+            self.audit.log_agent_message(
+                sender="orchestrator", receiver=agent.name,
+                msg_type="task_assignment", payload={"task": task[:200]})
             self.audit.log_event(kind="agent_start", agent=agent.name)
             start = len(self.gateway.context.findings)
             final = await self._run_specialist(
@@ -172,6 +177,9 @@ class SubscriptionRuntime:
                 AgentResult(agent=agent.name, final_text=final, findings=findings, turns=0)
             )
             self.audit.log_event(kind="agent_done", agent=agent.name, findings=len(findings))
+            self.audit.log_agent_message(
+                sender=agent.name, receiver="orchestrator", msg_type="finding_update",
+                payload={"count": len(findings), "ids": [f.id for f in findings]})
 
         result.all_findings = list(self.gateway.context.findings)
         result.self_corrections = list(self.gateway.context.corrections)

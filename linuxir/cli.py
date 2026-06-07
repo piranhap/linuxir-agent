@@ -13,6 +13,7 @@ from .report import write_reports
 
 def _run_analyze(args: argparse.Namespace) -> int:
     case = CaseConfig.from_yaml(args.case)
+    max_iters = args.max_iterations or int(os.environ.get("MAX_ITERATIONS", "10"))
 
     if args.offline:
         from .agents.coordinator import Coordinator
@@ -20,7 +21,8 @@ def _run_analyze(args: argparse.Namespace) -> int:
         from .llm import FakeClient
 
         print(f"[offline] scripted demo client (no API calls) for case '{case.case_id}'")
-        result = Coordinator(case, FakeClient(responder=demo_responder)).run()
+        result = Coordinator(case, FakeClient(responder=demo_responder),
+                             max_iterations=max_iters).run()
 
     elif args.auth == "subscription":
         # $0 path: Claude Agent SDK authenticated by your Pro/Max subscription.
@@ -37,14 +39,15 @@ def _run_analyze(args: argparse.Namespace) -> int:
 
         print(f"[subscription] Claude Agent SDK (no API key / no per-token billing) "
               f"for case '{case.case_id}'")
-        result = SubscriptionRuntime(case, model=args.model, effort=args.effort).run()
+        result = SubscriptionRuntime(case, model=args.model, effort=args.effort,
+                                     max_iterations=max_iters).run()
 
     else:  # api
         from .agents.coordinator import Coordinator
         from .llm import get_client
 
         print(f"[api] Anthropic Messages API (billed) for case '{case.case_id}'")
-        result = Coordinator(case, get_client()).run()
+        result = Coordinator(case, get_client(), max_iterations=max_iters).run()
 
     report_path, notes = write_reports(result)
     corrections.distill(result)
@@ -102,6 +105,13 @@ def main(argv: list[str] | None = None) -> int:
         "--offline",
         action="store_true",
         help="Use the scripted demo client (no API calls / no key / no network).",
+    )
+    analyze.add_argument(
+        "--max-iterations",
+        type=int,
+        default=None,
+        help="Cap orchestration iterations (default: $MAX_ITERATIONS or 10). The "
+        "orchestrator degrades to a partial report rather than looping forever.",
     )
     analyze.add_argument(
         "--model",
