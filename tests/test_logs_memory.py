@@ -62,6 +62,20 @@ def test_find_gaps_none_when_dense(tmp_path) -> None:
     assert "no coverage gaps" in logs.find_gaps([tmp_path])
 
 
+def test_find_gaps_ranks_largest_first_and_ignores_hourly_cron(tmp_path) -> None:
+    # Hourly-cron heartbeat (median cadence 60 min) must NOT be flagged as gaps,
+    # but a genuine multi-hour silence should rank first.
+    log = tmp_path / "var/log/auth.log"
+    log.parent.mkdir(parents=True)
+    lines = [f"Jun  3 0{h}:17:01 h CRON[1]: session opened" for h in range(0, 6)]
+    lines.append("Jun  3 14:17:01 h CRON[1]: session opened")  # ~8h silence after 05:17
+    log.write_text("\n".join(lines) + "\n")
+    out = logs.find_gaps([tmp_path])
+    assert "longest log silences" in out
+    # the 8h gap is reported; the uniform 60-min cron spacing is below threshold
+    assert "540 min gap" in out and "60 min gap" not in out
+
+
 # -- memory -----------------------------------------------------------------------
 
 def test_kernel_banner_recovered_from_image(tmp_path) -> None:

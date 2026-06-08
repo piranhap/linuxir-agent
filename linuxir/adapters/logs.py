@@ -157,28 +157,56 @@ def build_timeline(roots: list[Path]) -> str:
     return f"[merged timeline: {len(events)} events from {len(files)} log(s)]\n{note}{body}"
 
 
-def find_gaps(roots: list[Path], gap_minutes: int = 60) -> str:
-    """Detect coverage gaps / truncation in auth.log — possible anti-forensic tampering."""
+def find_gaps(roots: list[Path], gap_minutes: int = 60, anomaly_factor: int = 4,
+              max_report: int = 15) -> str:
+    """Detect *anomalous* coverage gaps in the logs — possible truncation / tampering.
+
+    A naive "any delta >= N minutes" flags the normal hourly CRON heartbeat as a gap and
+    drowns the signal. Instead a gap must be BOTH absolutely large (>= ``gap_minutes``) and
+    anomalous relative to the file's own median inter-event interval (>= ``anomaly_factor``
+    x median) — so an hourly-cron log (median ~60 min) only trips on multi-hour silences,
+    not on every hour. Results are ranked largest-first and capped.
+    """
+    import statistics
+
     files = _find(roots, _AUTH_NAMES) + _find(roots, _SYSLOG_NAMES)
     if not files:
         return "[no logs to check for gaps]"
-    findings: list[str] = []
+
+    gaps: list[tuple[int, str]] = []      # (minutes, description) for ranking
+    notes: list[str] = []
     for f in files:
+        if f.stat().st_size == 0:
+            notes.append(f"{f}: file is EMPTY — possible truncation/tampering")
+            continue
         stamped = [(_sort_key(ln), ln.strip())
                    for ln in read_text_file(f).splitlines() if _SYSLOG_TS.match(ln)]
         if not stamped:
-            findings.append(f"{f}: no timestamped lines (empty or non-standard format)")
+            notes.append(f"{f}: no timestamped lines (empty or non-standard format)")
             continue
+        deltas = [d for (k1, _), (k2, _) in zip(stamped, stamped[1:])
+                  if (d := _delta_minutes(k1, k2)) is not None and d >= 0]
+        if not deltas:
+            continue
+        median = max(statistics.median(deltas), 1)
+        threshold = max(gap_minutes, anomaly_factor * median)
         for (k1, l1), (k2, l2) in zip(stamped, stamped[1:]):
             mins = _delta_minutes(k1, k2)
-            if mins is not None and mins >= gap_minutes:
-                findings.append(
-                    f"{f}: {mins} min gap between\n    {l1}\n    {l2}")
-        if f.stat().st_size == 0:
-            findings.append(f"{f}: file is EMPTY — possible truncation/tampering")
-    if not findings:
-        return f"[no coverage gaps >= {gap_minutes} min detected]"
-    return f"[{len(findings)} potential coverage gap(s) / anomalies]\n" + "\n".join(findings)
+            if mins is not None and mins >= threshold:
+                gaps.append((mins, f"{f.name}: {mins} min gap (median cadence "
+                                    f"{int(median)} min) between\n    {l1}\n    {l2}"))
+
+    if not gaps and not notes:
+        return (f"[no coverage gaps detected — no interval was both >= {gap_minutes} min "
+                f"and >= {anomaly_factor}x the median cadence]")
+    gaps.sort(key=lambda g: -g[0])
+    shown = [d for _m, d in gaps[:max_report]]
+    header = (f"[longest log silences — top {min(len(gaps), max_report)} of {len(gaps)} "
+              f"interval(s) over threshold"
+              + (f"; {len(notes)} file-level anomaly(ies)" if notes else "") + ". "
+              "Long quiet windows in sparse event logs are often normal (overnight, "
+              "weekends) — corroborate before concluding truncation/tampering.]")
+    return header + "\n" + "\n".join(notes + shown)
 
 
 def _delta_minutes(k1: tuple[int, int, str], k2: tuple[int, int, str]) -> int | None:
