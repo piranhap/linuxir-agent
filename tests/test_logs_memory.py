@@ -62,6 +62,19 @@ def test_find_gaps_none_when_dense(tmp_path) -> None:
     assert "no coverage gaps" in logs.find_gaps([tmp_path])
 
 
+def test_timeline_parses_rfc5424(tmp_path) -> None:
+    # journald/rsyslog RFC5424: "<pri>1 2026-04-14T12:00:12Z host ..."
+    sl = tmp_path / "WEB-01" / "syslog.log"
+    sl.parent.mkdir(parents=True)
+    sl.write_text(
+        "<86>1 2026-04-14T12:00:12Z WEB-01 sudo 1 - - session opened for user root\n"
+        "<30>1 2026-04-14T19:42:03Z WEB-01 sshd 2 - - Accepted publickey for alice\n")
+    out = logs.build_timeline([tmp_path])
+    assert "merged timeline: 2 events" in out
+    # chronological: 12:00 before 19:42
+    assert out.index("12:00:12") < out.index("19:42:03")
+
+
 def test_find_gaps_ranks_largest_first_and_ignores_hourly_cron(tmp_path) -> None:
     # Hourly-cron heartbeat (median cadence 60 min) must NOT be flagged as gaps,
     # but a genuine multi-hour silence should rank first.

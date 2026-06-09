@@ -155,10 +155,17 @@ class SubscriptionRuntime:
                          f"A memory image is available at {mem}. Analyze it for injected "
                          "code, suspicious processes, and live connections; record findings."))
         pcap = find_by_ext(self.case.evidence_scope, _PCAP_EXT)
-        if pcap:
+        from .adapters.discover import discover as _discover
+        zeek = bool(_discover(self.case.evidence_scope, ("conn.json",)))
+        if pcap or zeek:
+            src = ([f"a packet capture at {pcap}"] if pcap else []) + \
+                  (["Zeek JSON logs (conn/http/dns/files)"] if zeek else [])
             plan.append((make_network_agent(),
-                         f"A packet capture is available at {pcap}. Analyze it for C2 "
-                         "beaconing and exfiltration; record findings."))
+                         f"Network telemetry is available ({' and '.join(src)}). Identify "
+                         "attacker/external IPs, C2 beaconing, exfiltration, and transferred-"
+                         "file hash IOCs; use the zeek_* tools for the JSON logs "
+                         "(zeek_conn_summary with focus_ip to trace a suspect IP). "
+                         "Record findings."))
 
         for agent, task in plan:
             self.audit.log_agent_message(

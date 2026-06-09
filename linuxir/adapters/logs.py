@@ -19,12 +19,24 @@ from .base import run_binary, summarize
 from .discover import discover
 from .disk import read_text_file
 
-# "Jun  3 02:11:07 host ..." — classic RFC3164 syslog stamp (no year).
-_SYSLOG_TS = re.compile(
-    r"^(?P<mon>[A-Z][a-z]{2})\s+(?P<day>\d{1,2})\s+(?P<time>\d{2}:\d{2}:\d{2})\s"
-)
+# Two syslog stamp formats:
+#   RFC3164 "Jun  3 02:11:07 host ..." (no year), and
+#   RFC5424 "<86>1 2026-04-14T12:00:12.603346Z host ..." (journald/rsyslog default).
+_TS_3164 = re.compile(
+    r"^(?P<mon>[A-Z][a-z]{2})\s+(?P<day>\d{1,2})\s+(?P<h>\d{2}):(?P<mi>\d{2}):(?P<s>\d{2})\s")
+_TS_5424 = re.compile(
+    r"^(?:<\d+>\d?\s*)?(?P<Y>\d{4})-(?P<mo>\d{2})-(?P<day>\d{2})[T ](?P<h>\d{2}):(?P<mi>\d{2}):(?P<s>\d{2})")
 _MONTHS = {m: i for i, m in enumerate(
     ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"], 1)}
+
+
+def _event_key(line: str) -> tuple[int, int, int, int, int] | None:
+    """Normalize either syslog format to a comparable (month, day, h, m, s); None if neither."""
+    if m := _TS_3164.match(line):
+        return (_MONTHS.get(m["mon"], 99), int(m["day"]), int(m["h"]), int(m["mi"]), int(m["s"]))
+    if m := _TS_5424.match(line):
+        return (int(m["mo"]), int(m["day"]), int(m["h"]), int(m["mi"]), int(m["s"]))
+    return None
 
 _AUTH_NAMES = ("var/log/auth.log", "var/log/auth.log.1", "var/log/secure")
 _SYSLOG_NAMES = ("var/log/syslog", "var/log/syslog.1", "var/log/messages")
@@ -57,11 +69,11 @@ _SUDO = re.compile(r"sudo:.*?(?P<who>\S+)\s*:.*COMMAND=(?P<cmd>.+)$")
 _SU = re.compile(r"\bsu(?:\[\d+\])?:.*(?:session opened|to) ")
 
 
-def _sort_key(line: str) -> tuple[int, int, str]:
-    m = _SYSLOG_TS.match(line)
-    if not m:
-        return (99, 99, "")
-    return (_MONTHS.get(m["mon"], 99), int(m["day"]), m["time"])
+_SENTINEL = (99, 99, 99, 99, 99)
+
+
+def _sort_key(line: str) -> tuple[int, int, int, int, int]:
+    return _event_key(line) or _SENTINEL
 
 
 def _find(roots: list[Path], names: tuple[str, ...]) -> list[Path]:
@@ -165,8 +177,8 @@ def build_timeline(roots: list[Path]) -> str:
     for f in files:
         tag = f.name
         for ln in read_text_file(f).splitlines():
-            if _SYSLOG_TS.match(ln):
-                events.append((_sort_key(ln), tag, ln.strip()))
+            if (k := _event_key(ln)) is not None:
+                events.append((k, tag, ln.strip()))
     events.sort(key=lambda e: e[0])
 
     note = ""
@@ -199,8 +211,9 @@ def find_gaps(roots: list[Path], gap_minutes: int = 60, anomaly_factor: int = 4,
         if f.stat().st_size == 0:
             notes.append(f"{f}: file is EMPTY — possible truncation/tampering")
             continue
-        stamped = [(_sort_key(ln), ln.strip())
-                   for ln in read_text_file(f).splitlines() if _SYSLOG_TS.match(ln)]
+        stamped = [(k, ln.strip())
+                   for ln in read_text_file(f).splitlines()
+                   if (k := _event_key(ln)) is not None]
         if not stamped:
             notes.append(f"{f}: no timestamped lines (empty or non-standard format)")
             continue
@@ -229,11 +242,10 @@ def find_gaps(roots: list[Path], gap_minutes: int = 60, anomaly_factor: int = 4,
     return header + "\n" + "\n".join(notes + shown)
 
 
-def _delta_minutes(k1: tuple[int, int, str], k2: tuple[int, int, str]) -> int | None:
-    """Minutes between two (month, day, HH:MM:SS) keys; None if either is unparseable."""
+def _delta_minutes(k1: tuple[int, ...], k2: tuple[int, ...]) -> int | None:
+    """Minutes between two (month, day, h, m, s) keys; None if either is unparseable."""
     if k1[0] == 99 or k2[0] == 99:
         return None
-    def to_min(k: tuple[int, int, str]) -> int:
-        h, m, s = (int(x) for x in k[2].split(":"))
-        return ((k[0] * 31 + k[1]) * 24 * 60) + h * 60 + m
+    def to_min(k: tuple[int, ...]) -> int:
+        return ((k[0] * 31 + k[1]) * 24 * 60) + k[2] * 60 + k[3]
     return to_min(k2) - to_min(k1)
