@@ -264,11 +264,13 @@ def correlate_findings(findings: list[Finding]) -> list[str]:
     """
     notes: list[str] = []
 
-    def _group(extract) -> dict[str, list[Finding]]:
+    def _group(extract, *, include_refs: bool = True) -> dict[str, list[Finding]]:
         idx: dict[str, list[Finding]] = {}
         for f in findings:
-            blob = " ".join([f.title, f.description, f.source_tool_output, *f.evidence_refs])
-            for ind in extract(blob):
+            parts = [f.title, f.description, f.source_tool_output]
+            if include_refs:
+                parts += f.evidence_refs
+            for ind in extract(" ".join(parts)):
                 idx.setdefault(ind, []).append(f)
         return idx
 
@@ -282,7 +284,9 @@ def correlate_findings(findings: list[Finding]) -> list[str]:
     def _users(blob: str) -> set[str]:
         return {u for m in _USER_RE.findall(blob) for u in m if u}
 
-    by_user = _group(_users)
+    # Exclude evidence_refs: those are host-absolute artifact paths (e.g. the analyst's own
+    # /home/<user> where evidence is stored) and would create phantom "users".
+    by_user = _group(_users, include_refs=False)
     _SYS_USERS = {"root", "daemon", "www-data", "nobody", "syslog", "sshd", "ubuntu"}
     for user, group in by_user.items():
         agents = sorted({f.agent or "?" for f in group})

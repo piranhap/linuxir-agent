@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
+from .agents import persona_builder, reporter
 from .agents.coordinator import InvestigationResult
 from .findings import Confidence, Finding
 
@@ -85,6 +86,16 @@ def write_final_report(result: InvestigationResult) -> Path:
                  f"{sum(1 for f in confirmed if f.requires_human_review)} flagged for human review. "
                  f"{len(dropped)} findings dropped by the auditor (see below).\n")
 
+    lines.append("## Key deliverables\n")
+    lines.append("- **Mandatory IR answers:** [[compromise-answers]]")
+    lines.append("- **IOC / IOA / TTP:** [[ioc-ttp]]")
+    lines.append("- **Recommendations:** [[recommendations]]")
+    lines.append("- **Attacker profile:** [[attacker-profile]] · **Timeline:** [[timeline]] · "
+                 "**Narrative:** [[narrative]]")
+    if result.expert is not None:
+        lines.append("- **Expert analysis:** [[analysis-polished]]")
+    lines.append("")
+
     lines.append("## Confirmed findings\n")
     if not confirmed:
         lines.append("_None confirmed._\n")
@@ -143,8 +154,32 @@ def write_final_report(result: InvestigationResult) -> Path:
     return path
 
 
+def write_day7_notes(result: InvestigationResult) -> list[Path]:
+    """Write the Persona/* and Report/* deliverables (mandatory IR answers, IOC/TTP, etc.).
+
+    Foldered under the vault; Obsidian ``[[wiki links]]`` resolve by note name regardless of
+    folder, so these cross-link cleanly with the flat analysis notes.
+    """
+    vault = result.case.vault_path
+    docs = {
+        "Report/compromise-answers.md": reporter.build_compromise_answers(result),
+        "Report/ioc-ttp.md": reporter.build_ioc_ttp(result),
+        "Report/recommendations.md": reporter.build_recommendations(result),
+        "Persona/attacker-profile.md": persona_builder.build_attacker_profile(result),
+        "Persona/timeline.md": persona_builder.build_timeline(result),
+        "Persona/narrative.md": persona_builder.build_narrative(result),
+    }
+    written: list[Path] = []
+    for rel, body in docs.items():
+        path = vault / rel
+        _write(path, body)
+        written.append(path)
+    return written
+
+
 def write_reports(result: InvestigationResult) -> tuple[Path, list[Path]]:
-    """Write the agent notes and the final report; return their paths."""
+    """Write the agent notes, the Day-7 deliverables, and the final report; return paths."""
     notes = write_agent_notes(result)
+    notes += write_day7_notes(result)
     report = write_final_report(result)
     return report, notes
