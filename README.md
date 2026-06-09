@@ -1,27 +1,48 @@
 # LinuxIR Agent
 
 A multi-agent Linux DFIR (digital forensics & incident response) triage system for the
-SANS **"FIND EVIL!"** challenge. It investigates a mounted evidence tree — finding
-persistence, reconstructing the intrusion timeline, and (when the tools are present)
-analyzing memory and network captures — and produces a cross-referenced report with
-honest, audited confidence levels.
+SANS **"FIND EVIL!"** challenge. An analyst opens a browser, gives plain-language case
+context and evidence paths, and watches specialized agents investigate a mounted evidence
+tree in parallel — finding persistence, reconstructing the intrusion timeline, analyzing
+memory and network captures (when the tools are present), enriching indicators with threat
+intel, and answering the 12 mandatory IR questions — producing a cross-referenced report in
+an Obsidian vault with honest, audited confidence levels.
 
 Its defining property is that **evidence-integrity guardrails are architectural, not
 prompt-based**. A Python `ConstraintEnforcer` vets every tool call *before any subprocess
 or filesystem write runs*. The model never gets the chance to spoliate evidence — the
 restriction is code at the dispatch layer, not an instruction the model could ignore,
-jailbreak, or hallucinate past.
+jailbreak, or hallucinate past. See [`docs/architecture.svg`](docs/architecture.svg) for the
+component diagram with trust-zone labels.
 
 ```
-coordinator ──▶ disk / log / memory / network agents      (Opus 4.8, manual tool loop)
-                       │ every tool_use
-                       ▼
-              ToolGateway.dispatch()   ◀── the one chokepoint
-                       │
-        ConstraintEnforcer → AuditLogger → adapter (real binary or graceful fallback)
-                       ▼
-              findings ──▶ auditor (Haiku) ──▶ report.py (Obsidian vault + JSONL)
+ web GUI ─▶ Coordinator ─▶ disk / log / memory / network specialists   (parallel, own gateway)
+                  │ iterate (--max-iterations)   │ every tool_use
+                  │                               ▼
+                  │                    ToolGateway.dispatch()   ◀── the one chokepoint
+                  │                               │
+                  │            ConstraintEnforcer → AuditLogger → adapter (real binary / fallback)
+                  ▼                               ▼
+   auditor (verify vs cited output) ─▶ IR expert (intel + MITRE + re-analysis) ─▶
+   persona builder ─▶ reporter (12 IR answers) ─▶ Obsidian vault + JSONL audit
 ```
+
+## What it does (capabilities)
+
+- **Web intake GUI** — browser form → case-state note in an Obsidian vault (`linuxir serve`).
+- **Read-only tool surface** — persistence (cron/systemd/ssh-keys/setuid/rc/ld.so.preload/
+  passwd/bash-history/wtmp), logs (auth/lastb/syslog/timeline/gaps), memory (volatility3 +
+  kernel-banner), network (pcap summary/beaconing/dns/http/exfil/creds/tor), threat-intel.
+- **Deterministic self-correction** — failed/empty/unavailable tool results yield a logged
+  recovery hint fed back to the model (vol3 retry · empty-result pivot · contradiction
+  reconciliation).
+- **Orchestrator** — parallel specialists (each in its own gateway), inter-agent messages
+  logged to `agent-messages.jsonl`, `--max-iterations` with graceful partial reports.
+- **Auditor** — drops findings unsupported by their cited tool output (anti-hallucination).
+- **IR expert** — local-first threat-intel enrichment + MITRE mapping; can request one
+  bounded re-analysis (closing the self-learning loop).
+- **Reporter** — the 12 mandatory IR answers (each evidence-cited), plus attacker profile,
+  timeline, IOC/TTP, and recommendations.
 
 ## Why a hand-rolled tool loop
 
@@ -52,11 +73,22 @@ uv run pytest tests/test_spoliation.py -q
 ## Setup
 
 ```bash
-uv sync --extra dev          # installs anthropic, pydantic, pyyaml, pytest
+uv sync --extra dev --extra web   # core + pytest + FastAPI/uvicorn (the web GUI)
 ```
 
 Optional forensic binaries (the system runs without them — adapters fall back gracefully):
-`volatility3` (`pip install volatility3`), `tshark`, `sleuthkit`, `geoiplookup`.
+`volatility3` (`pip install volatility3`), `tshark`, `sleuthkit`, `last`/`lastb`/`utmpdump`,
+`geoiplookup`.
+
+## Web GUI (Day-1 path)
+
+```bash
+uv run linuxir serve              # http://127.0.0.1:8080
+```
+
+Open the page, enter client/context + evidence paths, submit → a `case-state.md` note lands
+in the Obsidian vault (via the Local REST API if configured, else a local-file fallback).
+Endpoints: `GET /`, `POST /case/new`, `GET /case/{id}/status`, `GET /cases`, `GET /healthz`.
 
 ## Run
 
@@ -152,16 +184,26 @@ automatically activate the memory and network agents.
 linuxir/
   guardrails/constraints.py   ConstraintEnforcer + SpoliationViolation  (the safety core)
   guardrails/spoliation_test.py   10-attack harness
-  gateway.py                  ToolGateway.dispatch — the chokepoint
-  adapters/                   base.run_binary + disk / memory / network / geoip wrappers
+  gateway.py                  ToolGateway.dispatch — the chokepoint (+ self-correction)
+  selfcorrect.py              deterministic recovery hints (vol3 / empty-pivot / reconcile)
+  adapters/                   base.run_binary + disk / logs / memory / network / intel / geoip
   tools.py                    read-only tool schemas → gateway handlers
-  agents/                     loop, base, coordinator, auditor, {disk,log,memory,network}_agent
+  agents/                     loop, base, coordinator, auditor, linux_ir_expert,
+                              persona_builder, reporter, {disk,log,memory,network}_agent
   agentsdk_runtime.py         $0 subscription runtime (Claude Agent SDK + in-process MCP)
+  web/                        FastAPI intake GUI (server.py + static/index.html)
+  obsidian.py casestore.py    vault writer (REST + local fallback) + case intake/state
   findings.py audit.py report.py corrections.py config.py llm.py demo.py cli.py
-knowledge/linux-techniques.md   technique checklist seeding the agents
+knowledge/                    linux-techniques · mitre-attack · known-hashes · threat-intel-sources
 cases/sample-case.yaml
-tests/                        spoliation (13) + adapters (6) + pipeline (7) + subscription (5) = 31 tests
+docs/                         architecture.svg · accuracy-report.md · evidence-dataset.md
+tests/                        spoliation · adapters · pipeline · subscription · web · persistence ·
+                              logs/memory · network · self-correction · orchestrator · intel ·
+                              expert · reporter  =  95 tests
 ```
+
+See [`docs/accuracy-report.md`](docs/accuracy-report.md) (spoliation + real-evidence run) and
+[`docs/evidence-dataset.md`](docs/evidence-dataset.md) (what was tested against).
 
 The same gateway, enforcer, tools, prompts, auditor, correlation, and reports are shared by
 both transports — only how the model is reached differs (raw Messages API loop vs the Agent

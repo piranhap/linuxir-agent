@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="680" viewBox="0 0 960 680" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#444"/>
+    </marker>
+    <marker id="arrowR" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#b00020"/>
+    </marker>
+  </defs>
+
+  <style>
+    .title{font-size:20px;font-weight:700;fill:#0d1117}
+    .zone{font-size:13px;font-weight:700;letter-spacing:.5px}
+    .box{rx:8;ry:8;stroke-width:1.5}
+    .lbl{font-size:13px;fill:#0d1117}
+    .sub{font-size:11px;fill:#555}
+    .edge{stroke:#444;stroke-width:1.5;fill:none}
+    .deny{stroke:#b00020;stroke-width:1.5;fill:none;stroke-dasharray:5 3}
+    .note{font-size:11px;fill:#444}
+  </style>
+
+  <text x="30" y="34" class="title">LinuxIR Agent — architecture &amp; trust boundaries</text>
+
+  <!-- UNTRUSTED ZONE -->
+  <rect x="24" y="52" width="912" height="180" class="box" fill="#fff5f5" stroke="#e0a0a0" stroke-dasharray="6 4"/>
+  <text x="40" y="74" class="zone" fill="#b00020">UNTRUSTED — LLM layer (may hallucinate / be jailbroken; cannot reach evidence directly)</text>
+
+  <rect x="44" y="92" width="180" height="56" class="box" fill="#fff" stroke="#c98"/>
+  <text x="56" y="116" class="lbl">Coordinator</text>
+  <text x="56" y="134" class="sub">orchestrates · iterates (max-N)</text>
+
+  <rect x="248" y="92" width="300" height="56" class="box" fill="#fff" stroke="#c98"/>
+  <text x="260" y="112" class="lbl">Specialist agents (parallel, own gateway)</text>
+  <text x="260" y="132" class="sub">disk · log · memory · network</text>
+
+  <rect x="572" y="92" width="160" height="56" class="box" fill="#fff" stroke="#c98"/>
+  <text x="584" y="116" class="lbl">Auditor</text>
+  <text x="584" y="134" class="sub">verifies vs cited output</text>
+
+  <rect x="756" y="92" width="160" height="56" class="box" fill="#fff" stroke="#c98"/>
+  <text x="768" y="116" class="lbl">IR Expert</text>
+  <text x="768" y="134" class="sub">intel · MITRE · re-analysis</text>
+
+  <text x="44" y="178" class="note">Inter-agent messages (timestamp · sender · receiver · type) → audit/agent-messages.jsonl</text>
+  <rect x="44" y="186" width="872" height="32" rx="6" fill="#fdeaea" stroke="#e0a0a0"/>
+  <text x="56" y="206" class="sub">Reporter → 12 mandatory IR answers · persona · timeline · IOC/TTP · recommendations (synthesized from CONFIRMED findings only)</text>
+
+  <!-- TRUST BOUNDARY -->
+  <line x1="24" y1="258" x2="936" y2="258" stroke="#b00020" stroke-width="2.5"/>
+  <text x="30" y="276" class="zone" fill="#b00020">▼ TRUST BOUNDARY — enforced in Python; every tool call crosses here. The model cannot bypass it.</text>
+
+  <!-- chokepoint -->
+  <rect x="300" y="292" width="360" height="64" class="box" fill="#eaf2ff" stroke="#2f81f7" stroke-width="2"/>
+  <text x="320" y="316" class="lbl" font-weight="700">ToolGateway.dispatch()  — the one chokepoint</text>
+  <text x="320" y="338" class="sub">enforce → audit-log → run handler → self-correct hint</text>
+
+  <rect x="44" y="296" width="220" height="56" class="box" fill="#eef9ee" stroke="#3fb950"/>
+  <text x="56" y="320" class="lbl">ConstraintEnforcer</text>
+  <text x="56" y="338" class="sub">tool-name · path-scope · shell · flags</text>
+
+  <rect x="696" y="296" width="220" height="56" class="box" fill="#f6f8fa" stroke="#888"/>
+  <text x="708" y="320" class="lbl">AuditLogger (append-only)</text>
+  <text x="708" y="338" class="sub">tool-calls · findings · events</text>
+
+  <!-- TRUSTED ZONE -->
+  <rect x="24" y="386" width="912" height="262" class="box" fill="#f3faf3" stroke="#9cc79c" stroke-dasharray="6 4"/>
+  <text x="40" y="408" class="zone" fill="#1a7f37">TRUSTED — Python execution &amp; evidence (read-only)</text>
+
+  <rect x="44" y="424" width="540" height="64" class="box" fill="#fff" stroke="#9cc79c"/>
+  <text x="56" y="448" class="lbl">Read-only adapters</text>
+  <text x="56" y="468" class="sub">disk · logs · memory (vol3) · network (tshark) · intel · geoip — graceful fallback</text>
+
+  <rect x="608" y="424" width="308" height="64" class="box" fill="#fff" stroke="#9cc79c"/>
+  <text x="620" y="448" class="lbl">subprocess (read-only flags only)</text>
+  <text x="620" y="468" class="sub">no redirects · no -exec · allowlisted binaries</text>
+
+  <rect x="44" y="516" width="430" height="96" class="box" fill="#fff7e6" stroke="#d29922" stroke-width="2"/>
+  <text x="56" y="540" class="lbl" font-weight="700">EVIDENCE — READ-ONLY</text>
+  <text x="56" y="562" class="sub">mounted image · memory capture · logs · pcap</text>
+  <text x="56" y="582" class="sub">every path validated inside evidence_scope (realpath, ..-proof)</text>
+  <text x="56" y="600" class="sub">writes / deletes / chmod / redirects → BLOCKED + logged</text>
+
+  <rect x="500" y="516" width="416" height="96" class="box" fill="#eef2ff" stroke="#6f9eeb" stroke-width="2"/>
+  <text x="512" y="540" class="lbl" font-weight="700">WORKSPACE — writable</text>
+  <text x="512" y="562" class="sub">vault/ — Obsidian notes (report · analysis · persona · IR answers)</text>
+  <text x="512" y="582" class="sub">audit/ — tool-calls · agent-messages · spoliation-attempts (JSONL)</text>
+  <text x="512" y="600" class="sub">Corrections/ — self-learning log (read at each iteration)</text>
+
+  <!-- edges -->
+  <path class="edge" d="M314,148 L460,290" marker-end="url(#arrow)"/>
+  <path class="edge" d="M398,148 L480,290" marker-end="url(#arrow)"/>
+  <path class="edge" d="M652,148 L520,290" marker-end="url(#arrow)"/>
+  <path class="edge" d="M820,148 L540,290" marker-end="url(#arrow)"/>
+  <text x="556" y="246" class="note">all tool_use →</text>
+
+  <path class="edge" d="M300,324 L264,324" marker-end="url(#arrow)"/>
+  <path class="edge" d="M660,324 L696,324" marker-end="url(#arrow)"/>
+
+  <path class="edge" d="M360,356 L320,422" marker-end="url(#arrow)"/>
+  <text x="250" y="402" class="note">allowed → adapter</text>
+
+  <path class="deny" d="M150,352 C150,470 150,500 240,516" marker-end="url(#arrowR)"/>
+  <text x="156" y="430" class="note" fill="#b00020">read only</text>
+
+  <path class="edge" d="M806,352 L740,514" marker-end="url(#arrow)"/>
+  <text x="792" y="430" class="note">log →</text>
+
+  <path class="deny" d="M120,300 C90,360 90,360 120,420" />
+  <text x="40" y="362" class="note" fill="#b00020">deny →</text>
+</svg>
