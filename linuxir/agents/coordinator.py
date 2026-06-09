@@ -25,11 +25,12 @@ from ..audit import JSONLAuditLogger
 from ..config import CaseConfig
 from ..findings import Finding
 from ..gateway import ToolGateway
-from ..llm import MODEL_AUDITOR
+from ..llm import MODEL_AUDITOR, MODEL_EXPERT
 from .. import selfcorrect
 from ..tools import build_tools
 from .auditor import audit_findings, messages_ask
 from .disk_agent import make_disk_agent
+from .linux_ir_expert import ExpertResult, enrich as expert_enrich
 from .log_agent import make_log_agent
 from .loop import AgentResult
 from .memory_agent import make_memory_agent
@@ -38,6 +39,11 @@ from .network_agent import make_network_agent
 _MEMORY_EXT = {".lime", ".mem", ".raw", ".dmp", ".vmem", ".img.mem"}
 _PCAP_EXT = {".pcap", ".pcapng", ".cap"}
 _IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+# Usernames from home directories / SSH-key paths / sudo lines — the cross-artifact link
+# that pure IP correlation misses (e.g. an insider acting across disk and log evidence).
+_USER_RE = re.compile(r"(?:/home/([a-z_][a-z0-9_\-]{1,31})\b|"
+                      r"\buser[= ]([a-z_][a-z0-9_\-]{1,31})\b|"
+                      r"\bfor user ([a-z_][a-z0-9_\-]{1,31})\b)")
 
 
 @dataclass
@@ -50,6 +56,7 @@ class InvestigationResult:
     self_corrections: list = field(default_factory=list)  # Correction entries applied
     iterations: int = 0          # how many orchestration iterations ran
     partial: bool = False        # True if max_iterations hit before stabilizing
+    expert: ExpertResult | None = None  # IR-expert review + threat-intel enrichment
 
 
 class Coordinator:
@@ -59,6 +66,7 @@ class Coordinator:
         self.max_iterations = max(1, int(max_iterations))
         case.ensure_workspace()
         self.audit = JSONLAuditLogger(case.audit_dir)
+        self._reanalysis_done = False  # the expert may request re-analysis at most once
 
     # -- detection ----------------------------------------------------------------
 
@@ -135,10 +143,39 @@ class Coordinator:
                 result.all_findings.extend(res.findings)
                 result.self_corrections.extend(corrections)
 
+    def _run_expert_pass(self, result: InvestigationResult) -> None:
+        """Senior IR-expert review + threat-intel enrichment over the confirmed findings."""
+        self.audit.log_agent_message(
+            sender="orchestrator", receiver="ir_expert", msg_type="task_assignment",
+            payload={"confirmed": len(result.confirmed_findings)})
+        ask = messages_ask(self.client, MODEL_EXPERT)
+        result.expert = expert_enrich(
+            ask, result.confirmed_findings, audit=self.audit,
+            correlations=result.correlations, reanalysis_allowed=not self._reanalysis_done)
+        (self.case.vault_path / "analysis-polished.md").write_text(
+            result.expert.polished_markdown, encoding="utf-8")
+        self.audit.log_event(kind="agent_done", agent="ir_expert",
+                             iocs=len(result.expert.ioc_matches),
+                             reanalysis=result.expert.requests_reanalysis)
+        self.audit.log_agent_message(
+            sender="ir_expert", receiver="orchestrator", msg_type="intel_match",
+            payload={"iocs": len(result.expert.ioc_matches),
+                     "notable": len(result.expert.notable_iocs()),
+                     "mitre": result.expert.mitre_techniques})
+
+    def _append_self_learning(self, title: str, detail: str) -> None:
+        """Append a self-learning entry (inline to avoid importing corrections.py = cycle)."""
+        from datetime import datetime, timezone
+        log = self.case.corrections_dir / "self-learning-log.md"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        prefix = "# Self-learning log\n" if not log.exists() or log.stat().st_size == 0 else ""
+        with log.open("a", encoding="utf-8") as fh:
+            fh.write(f"{prefix}\n## {datetime.now(timezone.utc).isoformat()} — {title}\n\n{detail}\n")
+
     def _needs_reanalysis(self, result: InvestigationResult) -> bool:
-        """Whether another iteration is warranted. No expert pass yet (Days 6-7), so a
-        single pass is stable; this is the hook the IR-expert agent will later drive."""
-        return False
+        """Driven by the IR-expert pass: re-run when it flags an unresolved gap (bounded to
+        one re-analysis by ``_reanalysis_done``, which gates the expert's own decision)."""
+        return bool(result.expert and result.expert.requests_reanalysis)
 
     # -- orchestration ------------------------------------------------------------
 
@@ -155,31 +192,40 @@ class Coordinator:
             self.audit.log_event(kind="iteration_start", iteration=iteration,
                                  prior_corrections_chars=len(prior))
 
+            # Specialists + auditor run once; findings are then fixed. Subsequent
+            # iterations re-correlate and re-run the expert with the learned context.
             if iteration == 1:
                 self._run_specialists_parallel(result)
+                ask = messages_ask(self.client, MODEL_AUDITOR)
+                self.audit.log_agent_message(
+                    sender="orchestrator", receiver="auditor", msg_type="audit_request",
+                    payload={"findings": len(result.all_findings)})
+                result.confirmed_findings = audit_findings(
+                    ask, result.all_findings, audit=self.audit)
+                self.audit.log_agent_message(
+                    sender="auditor", receiver="orchestrator", msg_type="finding_update",
+                    payload={"confirmed": len(result.confirmed_findings),
+                             "dropped": len(result.all_findings) - len(result.confirmed_findings)})
 
-            # Audit: Haiku verifies each claim against its cited tool output.
-            ask = messages_ask(self.client, MODEL_AUDITOR)
-            self.audit.log_agent_message(
-                sender="orchestrator", receiver="auditor", msg_type="audit_request",
-                payload={"findings": len(result.all_findings)})
-            result.confirmed_findings = audit_findings(
-                ask, result.all_findings, audit=self.audit)
-            self.audit.log_agent_message(
-                sender="auditor", receiver="orchestrator", msg_type="finding_update",
-                payload={"confirmed": len(result.confirmed_findings),
-                         "dropped": len(result.all_findings) - len(result.confirmed_findings)})
-
-            # Correlate confirmed findings across artifacts.
+            # Correlate confirmed findings across artifacts (IP + user/path links).
             result.correlations = correlate_findings(result.confirmed_findings)
             for c in result.correlations:
                 self.audit.log_event(kind="correlation", note=c)
 
+            # Senior IR-expert review + threat-intel enrichment.
+            self._run_expert_pass(result)
+
             if not self._needs_reanalysis(result):
                 break
+            # Honor one re-analysis: record the expert's reason (closing the learning loop)
+            # and loop again. _reanalysis_done gates the expert from re-requesting.
+            self._reanalysis_done = True
+            reason = result.expert.reanalysis_reason or ""
+            self._append_self_learning(
+                f"Iteration {iteration} — IR expert requested re-analysis", reason)
             self.audit.log_agent_message(
-                sender="orchestrator", receiver="orchestrator",
-                msg_type="reanalysis_request", payload={"after_iteration": iteration})
+                sender="ir_expert", receiver="orchestrator", msg_type="reanalysis_request",
+                payload={"after_iteration": iteration, "reason": reason})
         else:
             # Loop exhausted without stabilizing — degrade gracefully to a partial report.
             result.partial = True
@@ -209,26 +255,41 @@ def find_by_ext(roots, exts: set[str]) -> Path | None:
 
 
 def correlate_findings(findings: list[Finding]) -> list[str]:
-    """Link confirmed findings that share an indicator (IP) across agents.
+    """Link confirmed findings that share an indicator across agents.
 
-    Shared across both runtimes. Beyond corroboration, it surfaces the memory-present /
-    logs-absent pattern that indicates log tampering rather than a contradiction to drop.
+    Correlates on IPs AND on usernames/paths — an insider or lateral-movement actor often
+    appears as the same *user* across disk and log evidence without a shared IP, which pure
+    IP correlation misses. Also surfaces the memory-present / logs-absent log-tampering
+    pattern (self-correction sequence 3). Shared across both runtimes.
     """
     notes: list[str] = []
-    by_ip: dict[str, list[Finding]] = {}
-    for f in findings:
-        blob = " ".join([f.title, f.description, f.source_tool_output, *f.evidence_refs])
-        for ip in set(_IP_RE.findall(blob)):
-            by_ip.setdefault(ip, []).append(f)
 
+    def _group(extract) -> dict[str, list[Finding]]:
+        idx: dict[str, list[Finding]] = {}
+        for f in findings:
+            blob = " ".join([f.title, f.description, f.source_tool_output, *f.evidence_refs])
+            for ind in extract(blob):
+                idx.setdefault(ind, []).append(f)
+        return idx
+
+    by_ip = _group(lambda b: set(_IP_RE.findall(b)))
     for ip, group in by_ip.items():
         agents = sorted({f.agent or "?" for f in group})
         if len(agents) > 1:
-            ids = ", ".join(f.id for f in group)
-            notes.append(
-                f"Indicator {ip} corroborated across {len(agents)} agents "
-                f"({', '.join(agents)}): findings {ids}."
-            )
+            notes.append(f"Indicator {ip} corroborated across {len(agents)} agents "
+                         f"({', '.join(agents)}): findings {', '.join(f.id for f in group)}.")
+
+    def _users(blob: str) -> set[str]:
+        return {u for m in _USER_RE.findall(blob) for u in m if u}
+
+    by_user = _group(_users)
+    _SYS_USERS = {"root", "daemon", "www-data", "nobody", "syslog", "sshd", "ubuntu"}
+    for user, group in by_user.items():
+        agents = sorted({f.agent or "?" for f in group})
+        ids = {f.id for f in group}
+        if len(agents) > 1 and len(ids) > 1 and user not in _SYS_USERS:
+            notes.append(f"User '{user}' links {len(agents)} agents "
+                         f"({', '.join(agents)}): findings {', '.join(sorted(ids))}.")
 
     # Cross-artifact contradiction → reconciliation (self-correction sequence 3):
     # memory-present / logs-absent indicators are log tampering, not a contradiction to drop.

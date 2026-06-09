@@ -70,6 +70,18 @@ def demo_responder(kwargs: dict[str, Any]) -> FakeMessage:
     system = kwargs.get("system", "")
     messages = kwargs.get("messages", [])
 
+    # -- IR-expert role (senior review narrative) ---------------------------------
+    if "senior Linux incident-response expert" in system:
+        return text(
+            "Initial access was via SSH using valid credentials from a single attacker IP, "
+            "after which the actor escalated to root and established cron persistence and an "
+            "unauthorized authorized_keys entry. They staged tooling in world-writable "
+            "directories, archived sensitive data, and exfiltrated it off-host before "
+            "clearing shell history to frustrate analysis. The activity is a coherent, "
+            "single-operator intrusion with persistence and data theft; confidence is high "
+            "where on-disk artifacts and logs corroborate the same indicators."
+        )
+
     # -- auditor role -------------------------------------------------------------
     if "finding auditor" in system:
         prompt = messages[-1]["content"]

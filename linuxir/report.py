@@ -99,6 +99,22 @@ def write_final_report(result: InvestigationResult) -> Path:
     else:
         lines.append("_No cross-artifact correlations._")
 
+    if result.expert is not None:
+        e = result.expert
+        notable = e.notable_iocs()
+        lines.append("\n## Expert analysis & threat intel\n")
+        lines.append("_Senior IR-expert review — full narrative in [[analysis-polished]]._\n")
+        lines.append(f"**MITRE ATT&CK coverage:** {', '.join(e.mitre_techniques) or '—'}\n")
+        lines.append(f"**Threat-intel IOCs:** {len(e.ioc_matches)} enriched, "
+                     f"{len(notable)} notable (malicious/suspicious).\n")
+        if e.ioc_matches:
+            lines.append("| indicator | kind | verdict | detail |")
+            lines.append("|---|---|---|---|")
+            for m in e.ioc_matches:
+                lines.append(f"| `{m.indicator}` | {m.kind} | **{m.verdict}** | {m.detail} |")
+        if e.reanalysis_reason:
+            lines.append(f"\n_Re-analysis was requested by the expert: {e.reanalysis_reason}_")
+
     lines.append("\n## Auditor-dropped findings (transparency)\n")
     if dropped:
         for f in dropped:
@@ -117,7 +133,10 @@ def write_final_report(result: InvestigationResult) -> Path:
         "- Tools whose binaries are not installed on this host return an 'unavailable' "
         "result; affected analyses are necessarily incomplete (not absent-of-evidence).\n"
     )
-    lines.append("\nAgent notes: " + ", ".join(f"[[analysis-{r.agent}]]" for r in result.agent_results))
+    note_links = [f"[[analysis-{r.agent}]]" for r in result.agent_results]
+    if result.expert is not None:
+        note_links.append("[[analysis-polished]]")
+    lines.append("\nAgent notes: " + ", ".join(note_links))
 
     path = case.vault_path / "report.md"
     _write(path, "\n".join(lines) + "\n")

@@ -99,3 +99,51 @@ def test_max_iterations_floor(tmp_path):
     # 0/negative is clamped to at least one iteration (never a no-op).
     res = _coord(tmp_path, max_iterations=0).run()
     assert res.iterations == 1
+
+
+def test_correlate_links_on_username():
+    from linuxir.agents.coordinator import correlate_findings
+    from linuxir.findings import Confidence, Finding
+
+    def f(fid, agent, blob):
+        x = Finding(id=fid, title=fid, description=blob, confidence=Confidence.HIGH)
+        x.agent = agent
+        return x
+
+    notes = correlate_findings([
+        f("d", "disk", "setuid tooling staged in /home/bmorse/.ssh"),
+        f("l", "log", "sudo session opened for user bmorse"),
+    ])
+    assert any("User 'bmorse' links" in n for n in notes)
+
+    # system accounts are not treated as correlating indicators
+    sys_notes = correlate_findings([
+        f("d", "disk", "config in /home/root"),
+        f("l", "log", "session opened for user root"),
+    ])
+    assert not any("links" in n for n in sys_notes)
+
+
+def test_expert_reanalysis_loop(tmp_path, monkeypatch):
+    """Expert requests one re-analysis (multi-agent findings, no correlation) -> 2 iterations,
+    bounded, with the reason recorded to the self-learning log."""
+    import linuxir.agents.coordinator as coord
+    monkeypatch.setattr(coord, "correlate_findings", lambda findings: [])  # force the gap
+
+    res = _coord(tmp_path).run()
+    assert res.iterations == 2          # one re-analysis honored, then stable
+    assert res.partial is False
+    assert res.expert is not None
+    sll = (res.case.corrections_dir / "self-learning-log.md").read_text()
+    assert "requested re-analysis" in sll
+    # the reanalysis_request inter-agent message was logged
+    assert any(m["msg_type"] == "reanalysis_request" for m in _messages(res.case))
+
+
+def test_expert_pass_runs_and_writes_polished(tmp_path):
+    res = _coord(tmp_path).run()
+    assert res.expert is not None and res.expert.mitre_techniques
+    assert (res.case.vault_path / "analysis-polished.md").exists()
+    # IR-expert participated in the agent-message log
+    senders = {m["sender"] for m in _messages(res.case)}
+    assert "ir_expert" in senders

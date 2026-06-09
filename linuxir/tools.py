@@ -17,7 +17,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from .adapters import disk, geoip, logs, memory, network
+from .adapters import disk, geoip, intel, logs, memory, network
 from .adapters.base import run_binary, summarize
 from .findings import Confidence, Finding
 from .gateway import ToolContext, ToolSpec
@@ -74,6 +74,13 @@ NETWORK_TOOLS = [
     "network_extract_credentials",
     "network_find_tor_exits",
     "geoip_lookup",
+    "record_finding",
+]
+# Threat-intel tools (used by the IR-expert pass; available to any agent that needs them).
+EXPERT_TOOLS = [
+    "intel_lookup_ip",
+    "intel_lookup_hash",
+    "intel_lookup_domain",
     "record_finding",
 ]
 
@@ -208,6 +215,18 @@ def _h_tor(inp: dict, _ctx: ToolContext) -> str:
 
 def _h_geoip(inp: dict, _ctx: ToolContext) -> str:
     return geoip.geoip_lookup(inp["ip"])
+
+
+def _h_intel_ip(inp: dict, _ctx: ToolContext) -> str:
+    return intel.lookup_ip(inp["ip"]).render()
+
+
+def _h_intel_hash(inp: dict, _ctx: ToolContext) -> str:
+    return intel.lookup_hash(inp["hash"]).render()
+
+
+def _h_intel_domain(inp: dict, _ctx: ToolContext) -> str:
+    return intel.lookup_domain(inp["domain"]).render()
 
 
 def _h_record_finding(inp: dict, ctx: ToolContext) -> str:
@@ -426,6 +445,22 @@ def build_tools() -> list[ToolSpec]:
                  {"type": "object", "properties": {"ip": {"type": "string"}},
                   "required": ["ip"], "additionalProperties": False},
                  _h_geoip),
+        # -- threat intel (local-first; opt-in external) -------------------------
+        ToolSpec("intel_lookup_ip",
+                 "Enrich an IP: RFC1918/loopback classification, known Tor-exit and "
+                 "known-bad matching (local-first; external opt-in). State only what the "
+                 "lookup returns.",
+                 {"type": "object", "properties": {"ip": {"type": "string"}},
+                  "required": ["ip"], "additionalProperties": False}, _h_intel_ip),
+        ToolSpec("intel_lookup_hash",
+                 "Enrich a sha256 against the known-hash baseline (external opt-in: "
+                 "MalwareBazaar/VT).",
+                 {"type": "object", "properties": {"hash": {"type": "string"}},
+                  "required": ["hash"], "additionalProperties": False}, _h_intel_hash),
+        ToolSpec("intel_lookup_domain",
+                 "Enrich a domain: known-bad match + DGA (high-entropy) heuristic.",
+                 {"type": "object", "properties": {"domain": {"type": "string"}},
+                  "required": ["domain"], "additionalProperties": False}, _h_intel_domain),
         # -- finding capture (workspace write, permitted) ------------------------
         ToolSpec("record_finding",
                  "Record an investigative finding. MUST cite the verbatim tool output in "

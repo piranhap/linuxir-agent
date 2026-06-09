@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 MODEL_REASONING = "claude-opus-4-8"
 MODEL_AUDITOR = "claude-haiku-4-5"
+MODEL_EXPERT = "claude-opus-4-8"  # senior IR-expert review pass
 
 
 # -- minimal response shapes (mirror the SDK's attribute access) --------------------

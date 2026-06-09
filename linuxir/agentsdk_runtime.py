@@ -38,6 +38,7 @@ from .agents.coordinator import (
     _MEMORY_EXT,
     _PCAP_EXT,
 )
+from .agents.linux_ir_expert import enrich as expert_enrich
 from .agents.disk_agent import make_disk_agent
 from .agents.log_agent import make_log_agent
 from .agents.loop import AgentResult
@@ -200,6 +201,21 @@ class SubscriptionRuntime:
         result.correlations = correlate_findings(result.confirmed_findings)
         for c in result.correlations:
             self.audit.log_event(kind="correlation", note=c)
+
+        # Senior IR-expert review + threat-intel enrichment (parity with the Coordinator).
+        self.audit.log_agent_message(
+            sender="orchestrator", receiver="ir_expert", msg_type="task_assignment",
+            payload={"confirmed": len(result.confirmed_findings)})
+        result.expert = expert_enrich(
+            ask, result.confirmed_findings, audit=self.audit,
+            correlations=result.correlations)
+        (self.case.vault_path / "analysis-polished.md").write_text(
+            result.expert.polished_markdown, encoding="utf-8")
+        self.audit.log_agent_message(
+            sender="ir_expert", receiver="orchestrator", msg_type="intel_match",
+            payload={"iocs": len(result.expert.ioc_matches),
+                     "mitre": result.expert.mitre_techniques})
+
         self.audit.log_event(
             kind="investigation_done", runtime="subscription",
             total=len(result.all_findings), confirmed=len(result.confirmed_findings),
