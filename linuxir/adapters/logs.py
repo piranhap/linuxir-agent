@@ -16,6 +16,7 @@ import re
 from pathlib import Path
 
 from .base import run_binary, summarize
+from .discover import discover
 from .disk import read_text_file
 
 # "Jun  3 02:11:07 host ..." — classic RFC3164 syslog stamp (no year).
@@ -27,6 +28,25 @@ _MONTHS = {m: i for i, m in enumerate(
 
 _AUTH_NAMES = ("var/log/auth.log", "var/log/auth.log.1", "var/log/secure")
 _SYSLOG_NAMES = ("var/log/syslog", "var/log/syslog.1", "var/log/messages")
+
+# Basename globs for collection-format triage trees (CylR/UAC/Velociraptor), where the
+# standard relative paths don't exist. sshd/sudo lines often land in syslog.log on these.
+_AUTH_GLOBS = ("auth.log", "auth.log.[0-9]", "secure", "secure.[0-9]", "syslog.log")
+_SYSLOG_GLOBS = ("syslog", "syslog.[0-9]", "syslog.log", "messages", "messages.[0-9]")
+
+
+def _find_auth(roots: list[Path]) -> list[Path]:
+    fixed = [root / n for root in roots for n in _AUTH_NAMES if (root / n).is_file()]
+    return sorted({*fixed, *discover(roots, _AUTH_GLOBS)}, key=str)
+
+
+def _find_syslog(roots: list[Path]) -> list[Path]:
+    fixed = [root / n for root in roots for n in _SYSLOG_NAMES if (root / n).is_file()]
+    return sorted({*fixed, *discover(roots, _SYSLOG_GLOBS)}, key=str)
+
+
+def _find_all_logs(roots: list[Path]) -> list[Path]:
+    return sorted(set(_find_auth(roots)) | set(_find_syslog(roots)), key=str)
 
 _FAILED = re.compile(
     r"Failed password for (?:invalid user )?(?P<user>\S+) from (?P<ip>\S+)")
@@ -50,7 +70,7 @@ def _find(roots: list[Path], names: tuple[str, ...]) -> list[Path]:
 
 def parse_auth(roots: list[Path]) -> str:
     """Parse auth.log/secure: brute force, first accepted (initial access), sudo/su."""
-    files = _find(roots, _AUTH_NAMES)
+    files = _find_auth(roots)
     if not files:
         return "[no auth.log / secure files found in evidence scope]"
 
@@ -113,7 +133,7 @@ def parse_lastb(roots: list[Path]) -> str:
 
 def parse_syslog(roots: list[Path]) -> str:
     """Surface syslog/messages daemon, cron, and systemd events (flagging odd tokens)."""
-    files = _find(roots, _SYSLOG_NAMES)
+    files = _find_syslog(roots)
     if not files:
         return "[no syslog / messages files found in evidence scope]"
     from .disk import _flag  # reuse the suspicious-token flagger
@@ -137,7 +157,7 @@ def build_timeline(roots: list[Path]) -> str:
     Uses log2timeline/plaso when available for a full super-timeline; otherwise builds an
     internal merge of the text logs (which is what the bundled evidence exercises).
     """
-    files = _find(roots, _AUTH_NAMES) + _find(roots, _SYSLOG_NAMES)
+    files = _find_all_logs(roots)
     if not files:
         return "[no parseable text logs found for a timeline]"
 
@@ -169,7 +189,7 @@ def find_gaps(roots: list[Path], gap_minutes: int = 60, anomaly_factor: int = 4,
     """
     import statistics
 
-    files = _find(roots, _AUTH_NAMES) + _find(roots, _SYSLOG_NAMES)
+    files = _find_all_logs(roots)
     if not files:
         return "[no logs to check for gaps]"
 

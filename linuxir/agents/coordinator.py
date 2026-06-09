@@ -98,10 +98,20 @@ class Coordinator:
                          f"A memory image is available at {mem}. Analyze it for injected "
                          "code, suspicious processes, and live connections; record findings."))
         pcap = self._find_by_ext(_PCAP_EXT)
-        if pcap:
+        from ..adapters.discover import discover as _discover
+        zeek = bool(_discover(self.case.evidence_scope, ("conn.json",)))
+        if pcap or zeek:
+            src = []
+            if pcap:
+                src.append(f"a packet capture at {pcap}")
+            if zeek:
+                src.append("Zeek JSON logs (conn/http/dns/files)")
             plan.append((make_network_agent(),
-                         f"A packet capture is available at {pcap}. Analyze it for C2 "
-                         "beaconing and exfiltration; record findings."))
+                         f"Network telemetry is available ({' and '.join(src)}). Identify "
+                         "attacker/external IPs, C2 beaconing, data exfiltration, and "
+                         "transferred-file hash IOCs; use the zeek_* tools for the JSON "
+                         "logs (zeek_conn_summary with focus_ip to trace a suspect IP). "
+                         "Record findings."))
         return plan
 
     def _run_one_specialist(self, agent: Any, task: str) -> tuple[AgentResult, list]:

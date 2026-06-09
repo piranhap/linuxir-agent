@@ -24,6 +24,10 @@ _CHECKLIST = """\
 - network_find_tor_exits: destinations on known Tor exit nodes (anonymized infrastructure).
 - GeoIP: only state a country the local DB returns. If geoiplookup is unavailable or the DB
   is missing, DO NOT guess a country — say it is unknown.
+- Zeek JSON logs (if present): zeek_conn_summary for external talkers + exfil (and
+  zeek_conn_summary with focus_ip to trace a specific suspect IP's flows / C2 beaconing);
+  zeek_file_hashes for transferred-file hash IOCs; zeek_dns for C2/exfil domains; zeek_http
+  for tooling/C2 over HTTP. Internal hosts are 10.x — external IPs are the attacker side.
 Cite the exact tool output (intervals, byte counts, endpoints) behind each finding.
 """
 

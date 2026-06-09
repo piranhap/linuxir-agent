@@ -17,7 +17,7 @@ from __future__ import annotations
 import shlex
 from pathlib import Path
 
-from .adapters import disk, geoip, intel, logs, memory, network
+from .adapters import disk, geoip, intel, logs, memory, network, web, zeek
 from .adapters.base import run_binary, summarize
 from .findings import Confidence, Finding
 from .gateway import ToolContext, ToolSpec
@@ -47,6 +47,7 @@ LOG_TOOLS = [
     "logs_parse_syslog",
     "logs_build_timeline",
     "logs_find_gaps",
+    "web_parse_access",
     "read_evidence_file",
     "list_directory",
     "bash_readonly",
@@ -73,6 +74,10 @@ NETWORK_TOOLS = [
     "network_detect_exfil",
     "network_extract_credentials",
     "network_find_tor_exits",
+    "zeek_conn_summary",
+    "zeek_http",
+    "zeek_dns",
+    "zeek_file_hashes",
     "geoip_lookup",
     "record_finding",
 ]
@@ -146,6 +151,26 @@ def _h_logs_timeline(_inp: dict, ctx: ToolContext) -> str:
 
 def _h_logs_gaps(_inp: dict, ctx: ToolContext) -> str:
     return logs.find_gaps(_roots(ctx))
+
+
+def _h_web_access(_inp: dict, ctx: ToolContext) -> str:
+    return web.parse_access(_roots(ctx))
+
+
+def _h_zeek_conn(inp: dict, ctx: ToolContext) -> str:
+    return zeek.conn_summary(_roots(ctx), focus_ip=inp.get("focus_ip"))
+
+
+def _h_zeek_http(_inp: dict, ctx: ToolContext) -> str:
+    return zeek.http_summary(_roots(ctx))
+
+
+def _h_zeek_dns(_inp: dict, ctx: ToolContext) -> str:
+    return zeek.dns_summary(_roots(ctx))
+
+
+def _h_zeek_files(_inp: dict, ctx: ToolContext) -> str:
+    return zeek.file_hashes(_roots(ctx))
 
 
 def _h_read(inp: dict, _ctx: ToolContext) -> str:
@@ -341,6 +366,33 @@ def build_tools() -> list[ToolSpec]:
                  "Detect coverage gaps / truncation in the logs (large time jumps, empty "
                  "files) — a possible anti-forensic tampering indicator.",
                  _NO_ARGS, _h_logs_gaps),
+        ToolSpec("web_parse_access",
+                 "Parse web access logs (Apache/nginx combined): attacker IPs by attack "
+                 "ratio, scanner UAs, attack-signature requests (SQLi/LFI/RCE/plugin "
+                 "exploit/web-shell), and confirmed web-shell command invocations + "
+                 "reverse-shell patterns. Finds the web entry point and source IP.",
+                 _NO_ARGS, _h_web_access),
+        # -- Zeek network telemetry (JSON) ---------------------------------------
+        ToolSpec("zeek_conn_summary",
+                 "Zeek conn.json: top internal->external destinations by bytes sent "
+                 "(exfil), top inbound sources, and — with focus_ip — every flow involving "
+                 "that IP (C2 beaconing / lateral movement).",
+                 {"type": "object",
+                  "properties": {"focus_ip": {"type": "string",
+                                 "description": "Optional: list all flows involving this IP."}},
+                  "additionalProperties": False},
+                 _h_zeek_conn),
+        ToolSpec("zeek_http",
+                 "Zeek http.json across the network: top hosts/URIs and non-browser "
+                 "User-Agents (C2 / tooling over HTTP).",
+                 _NO_ARGS, _h_zeek_http),
+        ToolSpec("zeek_dns",
+                 "Zeek dns.json: most-queried domains with a high-entropy/DGA flag.",
+                 _NO_ARGS, _h_zeek_dns),
+        ToolSpec("zeek_file_hashes",
+                 "Zeek files.json: distinct transferred-file hashes (md5/sha1/sha256) with "
+                 "mime/size — file IOCs, script/executable/archive types flagged.",
+                 _NO_ARGS, _h_zeek_files),
         ToolSpec("read_evidence_file",
                  "Read a text file at an absolute path inside evidence scope.",
                  _PATH, _h_read, path_params=("path",)),

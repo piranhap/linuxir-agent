@@ -14,6 +14,8 @@ _CHECKLIST = """\
 - logs_parse_syslog: cron/systemd/daemon events; flagged tokens (curl|wget, /tmp, base64).
 - logs_build_timeline: merge auth + syslog into one chronological view of the intrusion.
 - logs_find_gaps: large time jumps or empty logs — a log-truncation / anti-forensics hint.
+- web_parse_access (if a web access log is present): attacker IP by attack ratio, plugin/
+  web-shell exploits, and confirmed web-shell command invocations — often the entry point.
 - bash_history: attacker commands — downloads (wget/curl), chmod +x, execution from /tmp,
   cron/authorized_keys tampering, archiving + scp/rsync exfiltration, `history -c`.
 - Correlate: tie a source IP in auth.log to commands in bash_history to persistence on

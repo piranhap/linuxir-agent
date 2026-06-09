@@ -196,7 +196,11 @@ def _history_files(roots: list[Path]) -> list[Path]:
                 hf = base / name
                 if hf.is_file():
                     found.append(hf)
-    return found
+    # Collection-format triage trees: <host>/bash_history/<user>.bash_history (and any
+    # *.bash_history elsewhere). `*.bash_history` also matches a plain `.bash_history`.
+    from .discover import discover
+    found += discover(roots, ("*.bash_history", "*.sh_history", "*.zsh_history"))
+    return sorted({str(p): p for p in found}.values(), key=str)
 
 
 def parse_bash_history(roots: list[Path]) -> str:
