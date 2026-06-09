@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from collections import OrderedDict
+from datetime import datetime, timezone
 
 from ..findings import Confidence, Finding
 
@@ -62,7 +63,27 @@ _CATEGORIES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 _TS = re.compile(
     r"\b([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\b"     # syslog "Mar 13 08:05:57"
     r"|#(\d{9,11})\b"                                          # bash-history epoch
-    r"|\b(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\b")          # ISO
+    r"|\b(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})\b")          # ISO / Zeek
+
+# Usernames named inside a finding's text/output. Each pattern requires enough left-context
+# that a bare path component (e.g. the evidence-scope dir) cannot masquerade as an account —
+# this is the deterministic complement to correlate_findings' user-links, which only fire
+# when the SAME user appears across two agents.
+_USER = "([a-z_][a-z0-9._-]{1,31})"
+_ACCOUNT_PATTERNS = [
+    re.compile(p, re.IGNORECASE) for p in (
+        rf"(?:invalid user|for user|for invalid user|session opened for user) {_USER}",
+        rf"Accepted (?:password|publickey|keyboard-interactive) for {_USER}",
+        rf"User '{_USER}'",
+        rf"\bUSER={_USER}",
+        rf"crontabs/{_USER}",
+        rf"bash_history[/-]{_USER}",
+        rf"sudo:\s+{_USER}\s*:",
+        rf"useradd[^\n]*\b{_USER}\s*$",
+    )
+]
+# Tokens that are never a meaningful "suspected account" even with matching context.
+_ACCOUNT_STOPWORDS = {"unknown", "none", "null", "user", "the"}
 
 
 def _techs(f: Finding) -> set[str]:
@@ -101,21 +122,59 @@ def _artifacts(findings: list[Finding]) -> str:
     return ("Artifacts: " + ", ".join(f"`{r}`" for r in refs[:8])) if refs else ""
 
 
-def _usernames(result) -> list[str]:
+def _usernames(result, findings: list[Finding] | None = None) -> list[str]:
+    """Suspected accounts: those correlate_findings linked across agents, PLUS any account
+    named in a confirmed finding's text/output (auth.log users, crontab owners, USER= in
+    sudo/auditd, bash_history/<user>). The correlation-only path missed the latter."""
     users: set[str] = set()
     for c in result.correlations:
         m = re.search(r"User '([^']+)' links", c)
         if m:
             users.add(m.group(1))
+    for f in (findings or []):
+        blob = f"{f.title}\n{f.description}\n{f.source_tool_output}"
+        for pat in _ACCOUNT_PATTERNS:
+            for u in pat.findall(blob):
+                if u.lower() not in _ACCOUNT_STOPWORDS:
+                    users.add(u)
     return sorted(users)
 
 
 def _earliest_timestamp(findings: list[Finding]) -> str | None:
-    stamps: list[str] = []
+    """Earliest attacker activity across all confirmed findings, normalized to a real
+    instant. syslog ("Mar 13 08:05:57"), bash-history epoch (#...), and ISO/Zeek stamps are
+    parsed to comparable datetimes; the minimum is returned in a readable form — never a raw
+    epoch integer. syslog has no year, so it borrows the earliest year seen in the dated
+    (epoch/ISO) stamps; with no dated anchor it ranks last."""
+    raw: list[tuple[str, str, str]] = []
+    years: list[int] = []
     for f in findings:
         for syslog, epoch, iso in _TS.findall(f.source_tool_output):
-            stamps.append(syslog or iso or f"epoch {epoch}")
-    return stamps[0] if stamps else None
+            raw.append((syslog, epoch, iso))
+            if epoch:
+                years.append(datetime.fromtimestamp(int(epoch), timezone.utc).year)
+            elif iso:
+                years.append(int(iso[:4]))
+    anchor_year = min(years) if years else None
+
+    parsed: list[tuple[datetime, str]] = []
+    for syslog, epoch, iso in raw:
+        try:
+            if epoch:
+                dt = datetime.fromtimestamp(int(epoch), timezone.utc).replace(tzinfo=None)
+                parsed.append((dt, f"{dt:%Y-%m-%d %H:%M:%S} UTC"))
+            elif iso:
+                parsed.append((datetime.fromisoformat(iso.replace("T", " ")), iso))
+            elif syslog and anchor_year is not None:
+                dt = datetime.strptime(f"{anchor_year} {syslog}", "%Y %b %d %H:%M:%S")
+                parsed.append((dt, f"{syslog} {anchor_year}"))
+            elif syslog:
+                parsed.append((datetime.max, syslog))   # no dated anchor — lowest priority
+        except (ValueError, OverflowError, OSError):
+            continue
+    if not parsed:
+        return None
+    return min(parsed, key=lambda p: p[0])[1]
 
 
 def _q(n: int, question: str, answer: str, conf: Confidence | str,
@@ -135,7 +194,7 @@ def build_compromise_answers(result) -> str:
     confirmed = result.confirmed_findings
     cats = categorize(confirmed)
     expert = result.expert
-    users = _usernames(result)
+    users = _usernames(result, confirmed)
     out = ["# Compromise — mandatory IR answers\n",
            f"_Case `{result.case.case_id}` · {len(confirmed)} confirmed findings._\n"]
     n = 0

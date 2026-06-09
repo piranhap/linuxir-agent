@@ -121,6 +121,14 @@ def file_hashes(roots, max_lines: int = 2_000_000, max_hits: int = 200) -> str:
         flag = "  ⚠" if is_risky(r["mime"]) else ""
         parts.append(f"| `{(r['sha256'] or r['md5'] or '')[:32]}…`{flag} | {r['mime']} | "
                      f"{r['bytes']} | {r.get('tx')}→{r.get('rx')} | {r['ts']} |")
+    # Full, untruncated hashes so the expert's IOC extractor (64-hex sha256) can promote
+    # them into the IOC/TTP table — the table above shows only a 32-char prefix for layout.
+    parts.append("\n== File-hash IOCs (full) ==")
+    for r in rows[:60]:
+        h = r["sha256"] or r["md5"]
+        if h:
+            tag = "sha256" if r["sha256"] else "md5"
+            parts.append(f"  {tag}={h}  {r['mime']}  tx={r.get('tx')}")
     return "\n".join(parts)
 
 

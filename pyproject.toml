@@ -2,6 +2,8 @@
 name = "linuxir"
 version = "0.1.0"
 description = "LinuxIR Agent — a multi-agent Linux DFIR triage system with architectural, model-independent evidence-integrity guardrails."
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.69",

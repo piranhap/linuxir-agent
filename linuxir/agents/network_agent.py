@@ -26,7 +26,9 @@ _CHECKLIST = """\
   is missing, DO NOT guess a country — say it is unknown.
 - Zeek JSON logs (if present): zeek_conn_summary for external talkers + exfil (and
   zeek_conn_summary with focus_ip to trace a specific suspect IP's flows / C2 beaconing);
-  zeek_file_hashes for transferred-file hash IOCs; zeek_dns for C2/exfil domains; zeek_http
+  zeek_file_hashes for transferred-file hash IOCs — RECORD A FINDING for every risky-mime
+  (⚠) transfer, quoting the full sha256 from the "File-hash IOCs (full)" section so the hash
+  reaches the IOC/TTP table; zeek_dns for C2/exfil domains; zeek_http
   for tooling/C2 over HTTP. Internal hosts are 10.x — external IPs are the attacker side.
 Cite the exact tool output (intervals, byte counts, endpoints) behind each finding.
 """
