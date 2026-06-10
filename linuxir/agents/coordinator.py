@@ -15,6 +15,7 @@ remains a full LLM loop over the gated tool gateway. It:
 
 from __future__ import annotations
 
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -44,6 +45,43 @@ _IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _USER_RE = re.compile(r"(?:/home/([a-z_][a-z0-9_\-]{1,31})\b|"
                       r"\buser[= ]([a-z_][a-z0-9_\-]{1,31})\b|"
                       r"\bfor user ([a-z_][a-z0-9_\-]{1,31})\b)")
+
+# ~3 GB headroom per specialist: the memory (Volatility3) and disk (plaso) agents are the
+# heavy hitters, and the host OS + SIFT baseline already claims ~1.5 GB.
+_GB_PER_SPECIALIST = 3.0
+
+
+def _total_ram_gb() -> float:
+    """Total physical RAM in GiB from /proc/meminfo, or 0.0 if unreadable (non-Linux)."""
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) / (1024 * 1024)  # kB -> GiB
+    except (OSError, ValueError, IndexError):
+        pass
+    return 0.0
+
+
+def _specialist_concurrency(n_specialists: int) -> int:
+    """How many specialists to run at once, clamped to [1, n_specialists].
+
+    An explicit MAX_AGENT_CONCURRENCY env var wins; otherwise derive ~1 worker per 3 GB of
+    total RAM so the platform self-throttles on a small box and runs full fan-out on a large
+    one. Falls back to full fan-out if RAM can't be read."""
+    if n_specialists <= 1:
+        return 1
+    override = os.getenv("MAX_AGENT_CONCURRENCY")
+    if override:
+        try:
+            return max(1, min(n_specialists, int(override)))
+        except ValueError:
+            pass  # malformed override → fall through to the RAM heuristic
+    total_gb = _total_ram_gb()
+    if not total_gb:
+        return n_specialists
+    derived = int(total_gb // _GB_PER_SPECIALIST)
+    return max(1, min(n_specialists, derived))
 
 
 @dataclass
@@ -142,9 +180,19 @@ class Coordinator:
         return res, list(gateway.context.corrections)
 
     def _run_specialists_parallel(self, result: InvestigationResult) -> None:
-        """Dispatch all specialists concurrently; merge their isolated results in order."""
+        """Dispatch specialists concurrently (RAM-capped); merge their isolated results in order.
+
+        The memory agent (Volatility3) and disk agent (plaso) can each peak at multiple GB;
+        running every specialist at once OOM'd a 4 GB host. ``_specialist_concurrency`` caps the
+        worker count — a no-op on a well-provisioned box, serial on a small one. Capping
+        max_workers below len(plan) only queues the excess tasks; result collection below still
+        walks futures in submission order, so output stays deterministic."""
         plan = self._build_plan()
-        with ThreadPoolExecutor(max_workers=max(1, len(plan))) as ex:
+        workers = _specialist_concurrency(len(plan))
+        if workers < len(plan):
+            self.audit.log_event(kind="concurrency_capped", specialists=len(plan),
+                                 workers=workers, ram_gb=round(_total_ram_gb(), 1))
+        with ThreadPoolExecutor(max_workers=workers) as ex:
             futures = [ex.submit(self._run_one_specialist, agent, task)
                        for agent, task in plan]
             for fut in futures:  # collect in submission order for deterministic output
