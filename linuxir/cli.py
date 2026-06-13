@@ -68,9 +68,86 @@ def _run_analyze(args: argparse.Namespace) -> int:
     print(f"  report:  {report_path}")
     for n in notes:
         print(f"  note:    {n}")
-    print(f"  audit:   {case.audit_dir / 'audit.jsonl'}")
+    print(f"  audit:   {case.audit_dir / 'tool-calls.jsonl'}")
     print(f"  spoliation log: {case.audit_dir / 'spoliation-attempts.jsonl'}")
+    
+    _chat_loop(report_path, args)
+    
     return 0
+
+
+def _chat_loop(report_path, args: argparse.Namespace) -> None:
+    if args.offline:
+        return
+
+    print("\n" + "="*60)
+    print("Investigation complete. Entering interactive QA mode.")
+    print("Type 'exit' or 'quit' to end the session.")
+    print("="*60 + "\n")
+    
+    with open(report_path, "r", encoding="utf-8") as f:
+        report_content = f.read()
+
+    system_prompt = (
+        "You are the Linux IR Agent. You have just completed an investigation. "
+        "Here is the final executive report you generated:\n\n"
+        f"{report_content}\n\n"
+        "Please answer the user's questions strictly based on this report and the evidence it cites. "
+        "If the answer is not in the report, state that you do not have that information. Keep your answers concise."
+    )
+
+    messages_api = []
+    
+    while True:
+        try:
+            user_input = input("User > ").strip()
+            if user_input.lower() in ("exit", "quit"):
+                break
+            if not user_input:
+                continue
+            
+            messages_api.append({"role": "user", "content": [{"type": "text", "text": user_input}]})
+            print("Agent > ", end="", flush=True)
+            
+            if args.auth == "subscription":
+                from claude_agent_sdk import ClaudeAgentOptions, query, ResultMessage
+                import asyncio
+                
+                async def ask_agent():
+                    options_kwargs = {
+                        "system_prompt": system_prompt,
+                        "allowed_tools": [],
+                        "disallowed_tools": ["Bash", "Read", "Write", "Edit", "Glob", "Grep", "WebFetch", "WebSearch", "Task"],
+                        "permission_mode": "bypassPermissions",
+                        "setting_sources": None,
+                        "max_turns": 1,
+                    }
+                    if getattr(args, "model", None):
+                        options_kwargs["model"] = args.model
+                    options = ClaudeAgentOptions(**options_kwargs)
+                    final = ""
+                    async for msg in query(prompt=messages_api, options=options):
+                        if isinstance(msg, ResultMessage):
+                            final = getattr(msg, "result", "") or final
+                    return final
+                    
+                answer = asyncio.run(ask_agent())
+            else:
+                from .llm import get_client
+                client = get_client()
+                resp = client.messages.create(
+                    model=getattr(args, "model", None) or "claude-3-5-sonnet-20241022",
+                    system=system_prompt,
+                    messages=messages_api,
+                    max_tokens=2048,
+                )
+                answer = resp.content[0].text if resp.content else ""
+                
+            print(answer + "\n")
+            messages_api.append({"role": "assistant", "content": [{"type": "text", "text": answer}]})
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting QA mode.")
+            break
 
 
 def _run_serve(args: argparse.Namespace) -> int:
