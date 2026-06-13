@@ -1,0 +1,4 @@
+case_id: dfir-phishing
+evidence_scope:
+  - ../evidence/phishing
+workspace: ../out/dfir-phishing
