@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+import uuid
 
 from .audit import JSONLAuditLogger
 from .config import CaseConfig
@@ -98,6 +99,9 @@ class ToolGateway:
 
     def dispatch(self, tool_name: str, tool_input: dict, *, agent: str | None = None) -> str:
         """Validate, log, and (if permitted) execute a single tool call."""
+        call_id = str(uuid.uuid4())
+        self.context.current_tool_call_id = call_id
+        
         spec = self._tools.get(tool_name)
         try:
             self.enforcer.check(
@@ -110,6 +114,7 @@ class ToolGateway:
             )
         except SpoliationViolation as exc:
             self.audit.log_call(
+                tool_call_id=call_id,
                 tool=tool_name,
                 tool_input=tool_input,
                 decision="blocked",
@@ -128,6 +133,7 @@ class ToolGateway:
             result = spec.handler(tool_input, self.context)
         except Exception as exc:  # adapter errors are reported, not fatal
             self.audit.log_call(
+                tool_call_id=call_id,
                 tool=tool_name,
                 tool_input=tool_input,
                 decision="error",
@@ -137,7 +143,11 @@ class ToolGateway:
             return f"[tool error] {tool_name}: {exc!r}"
 
         self.audit.log_call(
-            tool=tool_name, tool_input=tool_input, decision="allowed", agent=agent
+            tool_call_id=call_id,
+            tool=tool_name, 
+            tool_input=tool_input, 
+            decision="allowed", 
+            agent=agent
         )
         result = result if isinstance(result, str) else str(result)
 

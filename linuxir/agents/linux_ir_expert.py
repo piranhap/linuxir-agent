@@ -77,12 +77,15 @@ def mitre_summary(findings: list[Finding]) -> list[str]:
 
 
 _EXPERT_SYSTEM = """\
-You are a senior Linux incident-response expert writing the executive analysis for a case.
+You are a senior Linux incident-response expert (following SANS SIFT forensic protocols) writing the executive analysis for a case.
 You are given the CONFIRMED findings (already verified against evidence by an auditor), the
 threat-intel verdicts on their indicators, and the MITRE ATT&CK coverage. Write a tight,
 factual narrative (5-10 sentences) of the intrusion: how it began, what the attacker did,
 privilege/persistence/exfil, and the overall assessment. Ground every statement in the
-findings provided — do NOT introduce new IOCs, malware names, or attribution. No headings,
+findings provided — do NOT introduce new IOCs, malware names, or attribution. Ensure you
+explicitly reference the specific forensic tools and artifacts (e.g., Volatility malfind injections,
+tshark beaconing intervals, Plaso/Syslog timeline gaps, or Zeek log correlations) that uncovered the findings
+to maintain a strict chain of custody in your reasoning. No headings,
 no bullet list, just the narrative paragraph(s).
 """
 

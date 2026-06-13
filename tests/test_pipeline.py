@@ -74,7 +74,7 @@ def test_findings_cite_real_tool_output(result):
 
 
 def test_audit_log_complete_and_no_spoliation(result):
-    audit = result.case.audit_dir / "audit.jsonl"
+    audit = result.case.audit_dir / "tool-calls.jsonl"
     kinds = [json.loads(l)["kind"] for l in audit.read_text().splitlines() if l.strip()]
     assert kinds.count("tool_call") >= 1
     assert "investigation_done" in kinds

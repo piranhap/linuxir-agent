@@ -51,7 +51,7 @@ def test_enrich_logs_intel_and_enriches(tmp_path):
     verdicts = {m.indicator: m.verdict for m in res.ioc_matches}
     assert verdicts["185.220.101.47"] == "malicious"
     # intel_match audit events were written
-    events = [json.loads(l) for l in (tmp_path / "audit.jsonl").read_text().splitlines()]
+    events = [json.loads(l) for l in (tmp_path / "tool-calls.jsonl").read_text().splitlines()]
     assert any(e.get("kind") == "intel_match" and e["indicator"] == "185.220.101.47"
                for e in events)
     assert res.polished_markdown.startswith("# Polished analysis")

@@ -46,6 +46,10 @@ class Finding(BaseModel):
         description="Verbatim tool output the claim rests on. The auditor checks the "
         "claim against THIS, not against the description.",
     )
+    tool_call_id: str | None = Field(
+        default=None, 
+        description="The internal ID of the tool call that recorded this finding."
+    )
     agent: str | None = Field(default=None, description="Which agent produced it.")
 
     # Set by the auditor pass.

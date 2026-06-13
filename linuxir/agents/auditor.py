@@ -74,6 +74,15 @@ def _extract_json(text: str) -> dict:
 
 
 def _audit_one(ask: Ask, finding: Finding) -> Verdict:
+    # A finding without a tool_call_id violates the traceability constraint.
+    if not finding.tool_call_id:
+        return Verdict(
+            supported=False,
+            risk=HallucinationRisk.HIGH,
+            suggested_confidence=Confidence.UNVERIFIED,
+            note="No tool_call_id; finding cannot be traced to the audit log.",
+        )
+
     # A finding that cites no evidence cannot be substantiated — fail closed.
     if not finding.source_tool_output.strip():
         return Verdict(

@@ -28,7 +28,7 @@ def _coord(tmp_path, **kw) -> Coordinator:
 
 
 def _events(case: CaseConfig) -> list[dict]:
-    return [json.loads(l) for l in (case.audit_dir / "audit.jsonl").read_text().splitlines()]
+    return [json.loads(l) for l in (case.audit_dir / "tool-calls.jsonl").read_text().splitlines()]
 
 
 def _messages(case: CaseConfig) -> list[dict]:

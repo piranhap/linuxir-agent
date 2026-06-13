@@ -20,7 +20,7 @@ class JSONLAuditLogger:
 
     Two streams are maintained:
 
-    * ``audit.jsonl`` — the full activity log (every dispatch, allowed or not).
+    * ``tool-calls.jsonl`` — the full activity log (every dispatch, allowed or not).
     * ``spoliation-attempts.jsonl`` — blocked write/delete/modify attempts only, so the
       evidence-integrity record stands alone and is trivial to audit.
     * ``agent-messages.jsonl`` — inter-agent communications (orchestrator ⇄ specialists ⇄
@@ -33,7 +33,7 @@ class JSONLAuditLogger:
 
     def __init__(self, audit_dir: Path) -> None:
         self.audit_dir = audit_dir
-        self.activity_log = audit_dir / "audit.jsonl"
+        self.activity_log = audit_dir / "tool-calls.jsonl"
         self.spoliation_log = audit_dir / "spoliation-attempts.jsonl"
         self.agent_messages_log = audit_dir / "agent-messages.jsonl"
         self._lock = threading.Lock()
@@ -49,6 +49,7 @@ class JSONLAuditLogger:
     def log_call(
         self,
         *,
+        tool_call_id: str,
         tool: str,
         tool_input: dict[str, Any],
         decision: str,
@@ -59,6 +60,7 @@ class JSONLAuditLogger:
         self._append(
             self.activity_log,
             {
+                "tool_call_id": tool_call_id,
                 "kind": "tool_call",
                 "agent": agent,
                 "tool": tool,

@@ -73,7 +73,7 @@ def test_dispatch_appends_hint_and_logs(tmp_path) -> None:
     assert "[self-correction]" in out                       # fed back to the model
     assert [c.trigger for c in gw.context.corrections] == ["empty_persistence_result"]
 
-    events = [json.loads(l) for l in (case.audit_dir / "audit.jsonl").read_text().splitlines()]
+    events = [json.loads(l) for l in (case.audit_dir / "tool-calls.jsonl").read_text().splitlines()]
     assert any(e.get("kind") == "self_correction" and e["tool"] == "persistence_check_cron"
                for e in events)
 

@@ -263,6 +263,7 @@ def _h_record_finding(inp: dict, ctx: ToolContext) -> str:
         confidence=Confidence(inp.get("confidence", "UNVERIFIED")),
         evidence_refs=list(inp.get("evidence_refs", [])),
         source_tool_output=inp.get("source_tool_output", ""),
+        tool_call_id=ctx.current_tool_call_id,
     )
     ctx.findings.append(finding)
     ctx.audit.log_finding(finding=finding.model_dump())

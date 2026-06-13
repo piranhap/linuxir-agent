@@ -98,8 +98,8 @@ class ConstraintEnforcer:
         # 1. Mutation by tool name — caught regardless of registration.
         if _MUTATION_NAME_RE.search(name):
             raise SpoliationViolation(
-                f"tool name '{tool_name}' denotes a mutating operation; "
-                "evidence is mounted read-only and may not be written, deleted, or modified"
+                f"tool name '{tool_name}' denotes a mutating or network-exfiltration operation; "
+                "evidence is mounted read-only and may not be modified or transmitted off-system"
             )
 
         # 2. Only tools the gateway registered as read-only may run.
