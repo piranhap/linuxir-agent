@@ -23,7 +23,7 @@ def _result(tmp_path) -> InvestigationResult:
     case = CaseConfig(case_id="rep", evidence_scope=(tmp_path / "ev",), workspace=tmp_path / "ws")
     findings = [
         _f("ia", "log", "Initial access: accepted SSH login from 185.220.101.47",
-           out="Mar 13 08:05:57 h sshd: Accepted password for bmorse from 185.220.101.47",
+           out="Mar 13 08:05:57 h sshd: Accepted password for jdoe from 185.220.101.47",
            tech="T1078 / T1110", refs=["/ev/var/log/auth.log"]),
         _f("cron", "disk", "Cron persistence: C2 beacon in /etc/cron.d",
            out="* * * * * root curl ...", tech="T1053.003", refs=["/ev/etc/cron.d/x"]),
@@ -40,7 +40,7 @@ def _result(tmp_path) -> InvestigationResult:
     )
     return InvestigationResult(
         case=case, confirmed_findings=findings,
-        correlations=["User 'bmorse' links disk, log: findings ia, cron."], expert=expert)
+        correlations=["User 'jdoe' links disk, log: findings ia, cron."], expert=expert)
 
 
 def test_all_12_questions_present(tmp_path):
@@ -55,7 +55,7 @@ def test_compromised_yes_and_key_answers(tmp_path):
     ca = reporter.build_compromise_answers(_result(tmp_path))
     assert "1. Is this device compromised?" in ca
     assert "Yes" in ca.split("compromised?")[1][:120]
-    assert "bmorse" in ca                            # accounts from correlation
+    assert "jdoe" in ca                            # accounts from correlation
     assert "185.220.101.47" in ca                    # origin
     assert "Yes — persistence" in ca
     assert "Yes — data exfiltration" in ca
@@ -65,7 +65,7 @@ def test_ioc_ttp_and_recommendations(tmp_path):
     r = _result(tmp_path)
     ioc = reporter.build_ioc_ttp(r)
     assert "T1078 (Initial Access)" in ioc and "185.220.101.47" in ioc
-    assert "User 'bmorse' links" in ioc              # IOA correlations
+    assert "User 'jdoe' links" in ioc              # IOA correlations
     rec = reporter.build_recommendations(r)
     assert "Persistence" in rec and "Hardening" in rec
     assert len(rec.splitlines()) > 5

@@ -1,10 +1,15 @@
+# Build spec / agent operating instructions — kept locally, not shipped in the repo.
+CLAUDE.md
+
 # Secrets — never commit a real .env (.env.template is the safe, committed stub)
 .env
 .env.*
 !.env.template
 
-# Investigation output workspaces
-/out/
+# Investigation output workspaces (ephemeral) — except the committed sample run, kept so
+# the real-evidence results in docs/accuracy-report.md are reproducible by inspection.
+/out/*
+!/out/dfir-phishing/
 
 # Python / uv
 __pycache__/

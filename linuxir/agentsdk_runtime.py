@@ -80,7 +80,7 @@ class SubscriptionRuntime:
         runtime = self
 
         for spec in self.gateway.specs:
-            @tool(spec.name, spec.description, spec.input_schema)
+            @tool(spec.name, spec.description, spec.schema_with_hypothesis)
             async def handler(args: dict, _name: str = spec.name) -> dict:
                 # The single chokepoint: dispatch runs the ConstraintEnforcer first.
                 out = gateway.dispatch(_name, dict(args), agent=runtime.current_agent)

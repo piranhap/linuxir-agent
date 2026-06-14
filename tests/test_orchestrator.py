@@ -111,10 +111,10 @@ def test_correlate_links_on_username():
         return x
 
     notes = correlate_findings([
-        f("d", "disk", "setuid tooling staged in /home/bmorse/.ssh"),
-        f("l", "log", "sudo session opened for user bmorse"),
+        f("d", "disk", "setuid tooling staged in /home/jdoe/.ssh"),
+        f("l", "log", "sudo session opened for user jdoe"),
     ])
-    assert any("User 'bmorse' links" in n for n in notes)
+    assert any("User 'jdoe' links" in n for n in notes)
 
     # system accounts are not treated as correlating indicators
     sys_notes = correlate_findings([

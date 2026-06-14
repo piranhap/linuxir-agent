@@ -148,11 +148,12 @@ Notes:
   unsets it for you when `--auth subscription`, but keep it out of your shell to be safe.
 - Subscription auth is licensed for **personal use** — run it yourself for the competition;
   don't ship it as a multi-user service on subscription credentials.
-- Point `evidence_scope` in the case file at the mounted SANS evidence (read-only).
+- Point `evidence_scope` in the case file at the mounted evidence (read-only).
 
 Output lands in the case `workspace`:
 - `vault/report.md` + `vault/analysis-<agent>.md` — Obsidian-style notes (cross-linked).
-- `audit/audit.jsonl` — every tool call (allowed/blocked), finding, and phase event.
+- `audit/tool-calls.jsonl` — every tool call (allowed/blocked), with its `hypothesis` and
+  `outcome`, plus findings and phase events.
 - `audit/spoliation-attempts.jsonl` — blocked evidence-mutation attempts.
 - `Corrections/self-learning-log.md` — distilled self-corrections (dropped findings, etc.).
 
@@ -170,6 +171,9 @@ automatically activate the memory and network agents.
 
 ## How findings stay honest
 
+- **Hypothesis before execution:** every tool call carries a required `hypothesis` field —
+  what the agent expects to find — recorded to the audit log *before* the tool runs and
+  compared against the `outcome`, so surprises surface instead of being rationalized.
 - Each finding **must cite the verbatim tool output** it rests on (`source_tool_output`).
 - A separate **auditor pass (Haiku)** judges every finding against that cited output, not
   against the agent's prose, and **drops** anything it can't substantiate — caught before
@@ -198,8 +202,8 @@ knowledge/                    linux-techniques · mitre-attack · known-hashes �
 cases/sample-case.yaml
 docs/                         architecture.svg · accuracy-report.md · evidence-dataset.md
 tests/                        spoliation · adapters · pipeline · subscription · web · persistence ·
-                              logs/memory · network · self-correction · orchestrator · intel ·
-                              expert · reporter  =  95 tests
+                              logs/memory · network · self-correction · hypothesis · orchestrator ·
+                              intel · expert · reporter  =  113 tests
 ```
 
 See [`docs/accuracy-report.md`](docs/accuracy-report.md) (spoliation + real-evidence run) and

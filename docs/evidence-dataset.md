@@ -32,32 +32,40 @@ uv run linuxir analyze --case cases/sample-case.yaml --offline
 
 ---
 
-## 2. SANS *starkskunk5* (real Linux IR dataset)
+## 2. Public CTF — *Master of DFIR — Phishing* (real external dataset)
 
-Used for the real-evidence validation in [[accuracy-report]] §3. The dataset (mounted at
-`/cases`, **read-only**) contains:
+Used for the real-evidence validation in [[accuracy-report]] §3. This is a **public** DFIR
+challenge (the "强网杯 / Qiangwang Cup" *Master of DFIR — Phishing* scenario), not internal
+or course-restricted material — so the full run, including its audit logs, ships in the repo
+under `out/dfir-phishing/` for inspection. The evidence set is two files:
 
-- `starkskunk5.E01` — 6.2 GB disk image (EnCase format).
-- `logs/` — compressed `authentication_logs` (auth.log + `btmp`/`wtmp`), `system_logs`
-  (syslog/kern), firewall/database logs, and an extracted `secure` log.
-- `triage/starkskunk5_17Mar.zip` — a **CylR triage collection** (a real `/etc`, `/home`,
-  `/var/log` tree with cron, ssh keys, shell histories — ideal for the read-only tools).
-- `skunkweb/`, `precooked/` (filesystems, timelines), `examples/`, `binaries/`.
+- `关于组织参加第八届"强网杯"全国网络安全挑战赛的通知.eml` — a spearphishing email with a
+  password-protected AES ZIP attachment.
+- `challenge.pcapng` — a packet capture of the surrounding network activity.
 
-**How it was run:** the CylR triage zip was extracted to scratch (`/tmp/skunk-root`,
-never modifying `/cases`); a case pointed `evidence_scope` at it; the full subscription
-pipeline ran. `last`/`lastb`/`utmpdump` were present (real `btmp`/`wtmp` decoding);
-`tshark`/`volatility3` were absent (graceful degradation).
+This is a deliberately **partial** evidence set — email + pcap only, with *no* host
+filesystem, auth.log, syslog, or `.bash_history`. That is precisely why it is a useful test:
+it forces the persistence tools to come up empty (exercising the self-correction pivots) and
+forces the agent to be honest about what it cannot conclude from the endpoint.
 
-**What the tools surfaced** (host `starkskunk5`, ~Mar 12–17):
+**How it was run:** a case pointed `evidence_scope` at `evidence/phishing/` (read-only) and
+the full multi-agent pipeline ran end-to-end. `tshark`/`volatility3` were absent on the host,
+so the network agent degraded gracefully to the **Zeek** JSON tools (graceful degradation,
+not fabrication).
 
-- `logs_parse_auth` — sudo run from `PWD=/dev/shm/.hydra` by `bmorse`; `cbarton` reading
-  `/home/bmorse/.ssh/*` as root.
-- `logs_parse_lastb` — credential-spray burst from internal `10.130.9.15`/`.11`.
-- `persistence_parse_bash_history` — `curl https://sh.rustup.rs \| sh`, GPG key generation,
-  `SensitiveDocsForNick`, `.covert`.
-- Full pipeline reconstruction: insider exfil by `bmorse`, `hydra` staging, `cbarton` root
-  recon, anti-forensic history clearing.
+**What the tools surfaced:**
 
-> Integrity: `/cases` is treated as read-only evidence and was never written; all extraction
-> went to `/tmp` scratch. Confirmed by file-mtime check post-run.
+- **Email parsing** — spearphishing lure `alice@flycode.cn → bob@flycode.cn` using a "强网杯"
+  theme; password-protected AES ZIP whose password (`2024qwbs8`) was disclosed in the body to
+  defeat automated scanning; the archive carried a `.msc` MMC snap-in payload
+  (T1566.001 / T1027 / T1204.002 / T1218).
+- **Zeek/pcap correlation** — an Apache Tomcat Manager HTTP Basic-auth brute force from
+  `192.168.100.1` against `192.168.100.146:6789` (T1110 / T1190), then outbound from
+  `192.168.100.146` to external `125.89.169.9:443` with internal fan-out (T1071 / T1046).
+- **Threat-intel / GeoIP** — `125.89.169.9` classified internet-routable, RFC1918 hosts
+  correctly tagged internal (lateral movement, not external C2).
+- **Honest coverage statement** — because no host artifacts were in scope, the agent flagged
+  privilege-escalation/persistence/definitive-exfil as *unconfirmed at the endpoint*.
+
+> Integrity: `evidence/phishing/` is treated as read-only and was never written; confirmed by
+> the zero evidence-mutation count in [[accuracy-report]] §3 and the spoliation log.

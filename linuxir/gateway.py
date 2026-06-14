@@ -25,6 +25,36 @@ from .selfcorrect import Correction, recovery_hint
 
 BLOCKED_PREFIX = "BLOCKED by ConstraintEnforcer:"
 
+# Every tool call must state, up front, what the agent expects it to reveal. The hypothesis
+# is recorded *before* the tool runs (see ``ToolGateway.dispatch``) and compared against the
+# outcome afterwards — the single most effective check against hallucinated findings, because
+# the model has to commit to an expectation it can then be caught contradicting.
+HYPOTHESIS_FIELD = "hypothesis"
+_HYPOTHESIS_PROP = {
+    "type": "string",
+    "description": (
+        "REQUIRED. State, in one sentence, what you expect this tool call to reveal BEFORE "
+        "you see the result. Recorded to the audit trail and compared against the outcome."
+    ),
+}
+
+
+def with_hypothesis(input_schema: dict) -> dict:
+    """Return a copy of ``input_schema`` with the mandatory ``hypothesis`` field added.
+
+    Applied uniformly to every registered tool's schema so the model is always prompted to
+    record its expectation; ``dispatch`` strips the field back out before the handler runs.
+    """
+    schema = dict(input_schema)
+    props = dict(schema.get("properties", {}))
+    props[HYPOTHESIS_FIELD] = _HYPOTHESIS_PROP
+    schema["properties"] = props
+    required = list(schema.get("required", []))
+    if HYPOTHESIS_FIELD not in required:
+        required.append(HYPOTHESIS_FIELD)
+    schema["required"] = required
+    return schema
+
 
 @dataclass
 class ToolContext:
@@ -52,11 +82,16 @@ class ToolSpec:
     command_params: tuple[str, ...] = ()
     arg_params: tuple[str, ...] = ()
 
+    @property
+    def schema_with_hypothesis(self) -> dict:
+        """The input schema augmented with the mandatory ``hypothesis`` field."""
+        return with_hypothesis(self.input_schema)
+
     def anthropic_schema(self) -> dict:
         return {
             "name": self.name,
             "description": self.description,
-            "input_schema": self.input_schema,
+            "input_schema": self.schema_with_hypothesis,
         }
 
 
@@ -101,7 +136,12 @@ class ToolGateway:
         """Validate, log, and (if permitted) execute a single tool call."""
         call_id = str(uuid.uuid4())
         self.context.current_tool_call_id = call_id
-        
+
+        # The hypothesis travels in the tool input (every schema carries the field); pull it
+        # out here so it is recorded *before* execution and never reaches the handler.
+        tool_input = dict(tool_input)
+        hypothesis = tool_input.pop(HYPOTHESIS_FIELD, None)
+
         spec = self._tools.get(tool_name)
         try:
             self.enforcer.check(
@@ -120,6 +160,7 @@ class ToolGateway:
                 decision="blocked",
                 agent=agent,
                 detail=exc.reason,
+                hypothesis=hypothesis,
             )
             self.audit.log_spoliation(
                 tool=tool_name, tool_input=tool_input, reason=exc.reason, agent=agent
@@ -139,17 +180,20 @@ class ToolGateway:
                 decision="error",
                 agent=agent,
                 detail=repr(exc),
+                hypothesis=hypothesis,
             )
             return f"[tool error] {tool_name}: {exc!r}"
 
+        result = result if isinstance(result, str) else str(result)
         self.audit.log_call(
             tool_call_id=call_id,
-            tool=tool_name, 
-            tool_input=tool_input, 
-            decision="allowed", 
-            agent=agent
+            tool=tool_name,
+            tool_input=tool_input,
+            decision="allowed",
+            agent=agent,
+            hypothesis=hypothesis,
+            outcome=result[:500],
         )
-        result = result if isinstance(result, str) else str(result)
 
         # Self-correction: if the result matches a known failure shape, record the
         # remediation and append it so the model is prompted to recover next turn.

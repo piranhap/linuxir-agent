@@ -55,8 +55,15 @@ class JSONLAuditLogger:
         decision: str,
         agent: str | None = None,
         detail: str | None = None,
+        hypothesis: str | None = None,
+        outcome: str | None = None,
     ) -> None:
-        """Record a tool dispatch (``decision`` is ``"allowed"`` or ``"blocked"``)."""
+        """Record a tool dispatch (``decision`` is ``"allowed"`` or ``"blocked"``).
+
+        ``hypothesis`` is the model's stated expectation, captured *before* the tool ran;
+        ``outcome`` is a short excerpt of what it actually returned. Together they make the
+        hypothesis→outcome pair auditable on a per-call basis.
+        """
         self._append(
             self.activity_log,
             {
@@ -65,7 +72,9 @@ class JSONLAuditLogger:
                 "agent": agent,
                 "tool": tool,
                 "input": tool_input,
+                "hypothesis": hypothesis,
                 "decision": decision,
+                "outcome": outcome,
                 "detail": detail,
             },
         )

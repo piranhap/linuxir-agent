@@ -39,8 +39,8 @@ uv run pytest tests/test_spoliation.py -q     # 13 tests
 ```
 
 **This guarantee held against real evidence, not just the harness** — see §3, where the live
-LLM pipeline attempted 5 out-of-scope/redirect/`-exec` shell calls and the enforcer refused
-every one.
+LLM pipeline attempted 6 out-of-scope/redirect/off-allowlist tool calls and the enforcer
+refused every one.
 
 ---
 
@@ -51,38 +51,67 @@ Every finding must cite the verbatim tool output it rests on. A separate auditor
 **drops** anything it cannot substantiate. The bundled offline pipeline plants a
 "Metasploit meterpreter" finding whose cited output never mentions meterpreter;
 `tests/test_pipeline.py` asserts it is dropped before the report while the evidence-backed
-findings are confirmed. Full suite: **95 tests passing.**
+findings are confirmed. Full suite: **113 tests passing.**
 
 ---
 
-## 3. Real-evidence run — SANS *starkskunk5*
+## 2b. Hypothesis-before-execution (machine-verified)
 
-The full multi-agent **subscription** pipeline was run against the real SANS *starkskunk5*
-Linux IR dataset (CylR triage tree; see [[evidence-dataset]]). Results:
+Every tool call carries a mandatory `hypothesis` field — the agent must state, *before* the
+tool runs, what it expects to find. The gateway records that expectation on the
+pre-execution audit record and strips it from the input the handler sees, then logs the
+actual `outcome` excerpt alongside it (`linuxir/gateway.py`, `linuxir/audit.py`). This is the
+CLAUDE.md "hypothesis before execution / outcome after" constraint enforced in code, not in a
+prompt: a model that omits the field cannot bypass logging, and the field is required on every
+registered tool's schema. `tests/test_hypothesis.py` asserts the field is injected into every
+tool schema, recorded on both allowed and blocked calls, and never leaks into the handler.
+
+Reproduce:
+
+```bash
+uv run pytest tests/test_hypothesis.py -q
+```
+
+---
+
+## 3. Real-evidence run — public *Master of DFIR — Phishing* CTF
+
+The full multi-agent pipeline was run against a **public** DFIR challenge (the
+"强网杯 / Qiangwang Cup" phishing scenario — email + pcap; see [[evidence-dataset]]). The
+complete run ships in the repo at `out/dfir-phishing/` (audit logs + vault), so every number
+below is reproducible by inspection. Results:
 
 | Metric | Value |
 |---|---|
-| Tool calls (audited) | 46 — **41 allowed, 5 blocked** by the ConstraintEnforcer |
-| Findings recorded | 16 |
-| Confirmed by auditor | 9 |
-| **Dropped by auditor** (unsupported/embellished) | **7** |
-| Self-corrections fired | 4 (empty-result pivots + a path recovery) |
-| Inter-agent messages logged | `agent-messages.jsonl` |
-| Evidence mutations | 0 (`/cases` never written; extraction to scratch only) |
+| Tool calls (audited) | 142 — **136 allowed, 6 blocked** by the ConstraintEnforcer |
+| Findings recorded | 12 |
+| Confirmed by auditor | 10 |
+| **Dropped by auditor** (unsupported/embellished) | **2** |
+| Flagged for human review (LOW confidence) | 3 |
+| Self-corrections fired | 10 empty-result persistence pivots + graceful degradation (tshark/vol3 absent → Zeek) |
+| Inter-agent messages logged | 9 (`agent-messages.jsonl`) |
+| Evidence mutations | 0 (`evidence/phishing/` never written) |
 
-**The 5 blocked calls were real model behavior on real evidence** — the LLM tried shell
-one-liners with `>` redirects, `find -exec`, and paths resolving *outside* evidence scope
-(into `~/.claude/...`); all refused in Python and logged.
+**The 6 blocked calls were real model behavior on real evidence** — the LLM tried a shell
+one-liner with a `>`-style redirect, a command whose path argument resolved *outside*
+evidence scope, a `read_evidence_file` against a path in `~/.claude/...` (outside scope), and
+three `tshark` invocations (binary not on the read-only allowlist); all refused in Python and
+logged to `spoliation-attempts.jsonl`.
 
-**The 7 dropped findings show the backstop working on messy real data** — the auditor
-confirmed the evidenced core of each but cut embellishments not present in the cited output
-(invented epoch timestamps, specific SSH-key names, hosts, and user attribution).
+**The 2 dropped findings show the backstop working on messy real data** — the auditor cut a
+claim that a large 22 MB flow was an "X11 session" (the cited protocol hierarchy showed X11
+was only 24 frames / ~108 KB, *contradicting* the prose) and a "no external C2 beaconing —
+DNS is benign" assertion that had no supporting tool output cited. The evidenced cores were
+kept; the embellishments were removed.
 
-Confirmed reconstruction (abridged): insider `bmorse` SSH access → staged `hydra` in
-`/dev/shm/.hydra` and attempted sudo escalation → GPG-encrypted and exfiltrated sensitive
-documents → `cbarton` escalated to root and read `bmorse`'s SSH keys/history → shell-history
-clearing (anti-forensics). A `btmp` credential-spray burst from internal IPs was recovered
-via `logs_parse_lastb`.
+Confirmed reconstruction (abridged): a spearphishing email (`alice@flycode.cn →
+bob@flycode.cn`) delivered a password-protected AES ZIP (password disclosed in the body to
+defeat scanning) containing a `.msc` payload → a Tomcat Manager HTTP Basic-auth brute force
+from `192.168.100.1` against `192.168.100.146:6789` → outbound C2 from that host to external
+`125.89.169.9` with internal fan-out. Because **no host filesystem was in scope**, the agent
+explicitly flagged privilege escalation, persistence, and definitive exfiltration as
+*unconfirmed at the endpoint* rather than inventing them — exactly the honesty this report
+is meant to demonstrate.
 
 ---
 

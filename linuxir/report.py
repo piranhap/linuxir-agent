@@ -137,7 +137,7 @@ def write_final_report(result: InvestigationResult) -> Path:
     lines.append("\n## Method & limitations\n")
     lines.append(
         "- Evidence was treated as **read-only**; every tool call was vetted by the "
-        "ConstraintEnforcer before execution and logged to `audit/audit.jsonl`. Blocked "
+        "ConstraintEnforcer before execution and logged to `audit/tool-calls.jsonl`. Blocked "
         "evidence-mutation attempts (if any) are in `audit/spoliation-attempts.jsonl`.\n"
         "- Each finding was verified by an independent auditor pass against the verbatim "
         "tool output it cites; unsubstantiated claims were dropped.\n"

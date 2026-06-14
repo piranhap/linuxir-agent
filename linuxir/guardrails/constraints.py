@@ -146,7 +146,7 @@ class ConstraintEnforcer:
         try:
             tokens = shlex.split(command)
         except ValueError as exc:  # unbalanced quotes etc.
-            raise SpoliationViolation(f"uparsable command: {exc}") from exc
+            raise SpoliationViolation(f"unparsable command: {exc}") from exc
         if not tokens:
             raise SpoliationViolation("empty bash_readonly command")
 

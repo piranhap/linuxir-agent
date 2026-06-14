@@ -22,7 +22,7 @@ def _f(fid, agent, *, desc="", out="", tech=None) -> Finding:
 
 def test_extract_iocs_from_text_urls_and_emails():
     f = _f("x", "log",
-           desc="beacon to 185.220.101.47 via http://evil.example/x.sh; mail nick@corp.com",
+           desc="beacon to 185.220.101.47 via http://evil.example/x.sh; mail user@corp.com",
            out="sha256 " + "ab" * 32)  # 64 hex
     iocs = expert.extract_iocs([f])
     assert "185.220.101.47" in iocs["ip"]
@@ -58,8 +58,8 @@ def test_enrich_logs_intel_and_enriches(tmp_path):
 
 
 def test_reanalysis_requested_on_uncorrelated_multiagent(tmp_path):
-    findings = [_f("d", "disk", desc="/home/bmorse staged tooling"),
-                _f("l", "log", desc="bmorse sudo to root")]
+    findings = [_f("d", "disk", desc="/home/jdoe staged tooling"),
+                _f("l", "log", desc="jdoe sudo to root")]
     res = expert.enrich(ASK, findings, audit=_audit(tmp_path), correlations=[])
     assert res.requests_reanalysis is True
     assert "disk" in res.reanalysis_reason and "log" in res.reanalysis_reason
@@ -68,7 +68,7 @@ def test_reanalysis_requested_on_uncorrelated_multiagent(tmp_path):
 def test_no_reanalysis_when_correlated(tmp_path):
     findings = [_f("d", "disk"), _f("l", "log")]
     res = expert.enrich(ASK, findings, audit=_audit(tmp_path),
-                        correlations=["User 'bmorse' links disk, log"])
+                        correlations=["User 'jdoe' links disk, log"])
     assert res.requests_reanalysis is False
 
 
