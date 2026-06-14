@@ -80,7 +80,7 @@ Optional forensic binaries (the system runs without them — adapters fall back 
 `volatility3` (`pip install volatility3`), `tshark`, `sleuthkit`, `last`/`lastb`/`utmpdump`,
 `geoiplookup`.
 
-## Web GUI (Day-1 path)
+## Web GUI
 
 ```bash
 uv run linuxir serve              # http://127.0.0.1:8080
@@ -132,13 +132,13 @@ your normal machine and copy it over:
 
 ```bash
 # 1. On a machine WITH a browser (your laptop), logged into Claude Pro/Max:
-npm install -g @anthropic-ai/claude-code
+npm install -g @anthropic-ai/claude-code // you can also use the curl command on claude's site
 claude setup-token          # opens a browser → prints sk-ant-oat01-...  (valid ~1 year)
 
 # 2. On the SANS VM:
 npm install -g @anthropic-ai/claude-code          # needs Node 18+
 export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...    # the token from step 1
-unset ANTHROPIC_API_KEY                            # IMPORTANT: it silently overrides the token
+unset ANTHROPIC_API_KEY                            # IMPORTANT: it silently overrides the token <- important if you DO NOT want to get charged for API costs.
 uv sync --extra dev                                # or: pip install -e .
 uv run linuxir analyze --case cases/sample-case.yaml
 ```
@@ -208,11 +208,3 @@ See [`docs/accuracy-report.md`](docs/accuracy-report.md) (spoliation + real-evid
 The same gateway, enforcer, tools, prompts, auditor, correlation, and reports are shared by
 both transports — only how the model is reached differs (raw Messages API loop vs the Agent
 SDK driving in-process MCP tools).
-
-## Status & honesty
-
-This repository is the working implementation. The **spoliation guarantee is real and
-machine-verified** (run the test). The accuracy figures in the original report (BOTSv3 /
-MemLabs recall, false-positive rates) require those evidence datasets to reproduce and are
-**not** claimed by this code on its own — point a case file at real evidence with a live
-API key to generate measured results.
