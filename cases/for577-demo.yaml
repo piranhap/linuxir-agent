@@ -1,0 +1,9 @@
+# FOR577 demo slice — the two hosts that carry the intrusion story (WEB-01 + DB-01).
+# Log-only (no Zeek in scope) so a LIVE run finishes in ~2 min on camera while still
+# exercising the log agent and triggering the empty-persistence self-correction pivot.
+# For the full multi-host + network run, use cases/for577.yaml.
+case_id: for577-demo
+evidence_scope:
+  - ../evidence/for577/data/WEB-01.northbridgefs.local
+  - ../evidence/for577/data/DB-01.northbridgefs.local
+workspace: ../out/for577-demo
