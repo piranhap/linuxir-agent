@@ -10,6 +10,7 @@ CLAUDE.md
 # the real-evidence results in docs/accuracy-report.md are reproducible by inspection.
 /out/*
 !/out/dfir-phishing/
+!/out/for577/
 
 # Python / uv
 __pycache__/

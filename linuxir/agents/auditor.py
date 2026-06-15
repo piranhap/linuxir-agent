@@ -100,6 +100,16 @@ def _audit_one(ask: Ask, finding: Finding) -> Verdict:
     )
     text = ask(_AUDIT_SYSTEM, prompt)
     data = _extract_json(text)
+    if "supported" not in data:
+        # Auditor returned nothing parseable (e.g. a transport blip survived retries).
+        # Fail closed: do NOT confirm an unverified claim, but flag it for human review
+        # rather than silently dropping a possibly-real finding.
+        return Verdict(
+            supported=False,
+            risk=HallucinationRisk.MODERATE,
+            suggested_confidence=Confidence.UNVERIFIED,
+            note="Auditor response unavailable; claim left unverified for human review.",
+        )
     risk = HallucinationRisk(data.get("hallucination_risk", "none"))
     sugg = data.get("suggested_confidence")
     return Verdict(

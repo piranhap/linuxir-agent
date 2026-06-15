@@ -123,15 +123,31 @@ class SubscriptionRuntime:
                 final = getattr(msg, "result", "") or final
         return final
 
-    async def _ask_async(self, system: str, user: str) -> str:
+    async def _ask_async(self, system: str, user: str, *, retries: int = 3) -> str:
         from claude_agent_sdk import ResultMessage, query
 
-        options = self._options(system=system, allowed_tools=[], with_tools=False)
-        final = ""
-        async for msg in query(prompt=user, options=options):
-            if isinstance(msg, ResultMessage):
-                final = getattr(msg, "result", "") or final
-        return final
+        # The Agent SDK occasionally raises a post-stream transport error (e.g.
+        # "error result: success") even after a usable result was produced. A single
+        # such blip on one audit/expert query must not tank the whole investigation —
+        # retry, and if a result was already captured, return it. After exhausting
+        # retries we degrade gracefully (return "") rather than crash; callers treat an
+        # empty answer as "could not verify", never as a confirmed finding.
+        last_exc: Exception | None = None
+        for attempt in range(1, retries + 1):
+            options = self._options(system=system, allowed_tools=[], with_tools=False)
+            final = ""
+            try:
+                async for msg in query(prompt=user, options=options):
+                    if isinstance(msg, ResultMessage):
+                        final = getattr(msg, "result", "") or final
+                return final
+            except Exception as exc:  # noqa: BLE001 — transport blip, not a logic error
+                last_exc = exc
+                if final:
+                    return final
+                await asyncio.sleep(1.5 * attempt)
+        self.audit.log_event(kind="ask_failed", error=repr(last_exc)[:200])
+        return ""
 
     # -- orchestration ------------------------------------------------------------
 

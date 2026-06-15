@@ -74,7 +74,7 @@ uv run pytest tests/test_hypothesis.py -q
 
 ---
 
-## 3. Real-evidence run — public *Master of DFIR — Phishing* CTF
+## 3. Real-evidence run #1 — public *Master of DFIR — Phishing* CTF
 
 The full multi-agent pipeline was run against a **public** DFIR challenge (the
 "强网杯 / Qiangwang Cup" phishing scenario — email + pcap; see [[evidence-dataset]]). The
@@ -112,6 +112,50 @@ from `192.168.100.1` against `192.168.100.146:6789` → outbound C2 from that ho
 explicitly flagged privilege escalation, persistence, and definitive exfiltration as
 *unconfirmed at the endpoint* rather than inventing them — exactly the honesty this report
 is meant to demonstrate.
+
+---
+
+## 3b. Real-evidence run #2 — FOR577 *log-experiment* (multi-host Linux)
+
+A second run against a larger, genuinely **multi-host Linux** dataset: the FOR577
+"log-experiment" (Northbridge Financial) scenario — 20 hosts of per-user `bash_history` +
+`syslog`, a `WEB-01` web-access log, and two Zeek sensors (`conn`/`dns`/`http`/`files`/
+`ssl`/`x509`), ~1.2 GB (used with the data author's permission; see [[evidence-dataset]]).
+The full run ships at `out/for577/`. Results:
+
+| Metric | Value |
+|---|---|
+| Tool calls (audited) | 72 — **65 allowed, 7 blocked** by the ConstraintEnforcer |
+| Hypothesis recorded before execution | 72 / 72 calls |
+| Findings recorded | 10 |
+| Confirmed by auditor | 5 |
+| **Dropped by auditor** (unsupported/embellished) | **5** |
+| Flagged for human review | 1 |
+| Self-corrections fired | 8 (empty-result persistence pivots — the collection is log-only) |
+| Evidence mutations | 0 |
+
+**The 7 blocked calls were real model behavior** — `>` shell redirects, command paths
+resolving *outside* evidence scope (into `~/.claude/...`), and the model even passing an IP
+(`23.72.209.230`) where a pcap path was expected; all refused in Python and logged.
+
+**The 5 dropped findings are the backstop at its best on messy real data.** In each case the
+auditor confirmed the verbatim-supported core but cut the *inference*: it kept the `rm -f` of
+two files but dropped "anti-forensic cleanup … after exfiltration" (no timing/attribution in
+the cited output); it kept the credentials `cms_ro:Winter2026!` but dropped "HIGH confidence /
+MySQL auth succeeded" (not shown); it dropped "over SMB" where the cited flows were port 22,
+not 445. Embellishment removed, evidence kept.
+
+Confirmed reconstruction (abridged): a privileged shell on **WEB-01 (10.42.20.20)** read
+`/etc/shadow` and enumerated the finance database, then **exfiltrated database dumps** to
+external `mosaic-metrics.net`; bulk HTTPS exfiltration to `23.72.209.230` was observed from
+multiple workstations via the Zeek `conn` summaries. Auth analysis showed **no SSH brute
+force and no log-coverage gaps**. The initial-access vector could not be definitively
+established from logs alone, and the agent said so (LOW confidence) rather than inventing one.
+
+> Robustness note: a transient post-stream Agent-SDK transport error during the auditor pass
+> is now **retried and degraded gracefully** (`linuxir/agentsdk_runtime.py`) instead of
+> aborting the investigation — a finding the auditor cannot reach is left *unverified for
+> human review*, never silently confirmed.
 
 ---
 

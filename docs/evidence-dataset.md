@@ -69,3 +69,40 @@ not fabrication).
 
 > Integrity: `evidence/phishing/` is treated as read-only and was never written; confirmed by
 > the zero evidence-mutation count in [[accuracy-report]] §3 and the spoliation log.
+
+---
+
+## 3. FOR577 *log-experiment* — multi-host Linux logs (real, used with permission)
+
+The largest and most representative dataset: the FOR577 "log-experiment" (Northbridge
+Financial) scenario — a real, multi-host Linux enterprise capture. **Used with the explicit
+permission of the data's author.** Validation results are in [[accuracy-report]] §3b; the
+full run ships at `out/for577/`. ~1.2 GB across 22 sources:
+
+- **20 Linux hosts** (`WEB-01`, `DB-01`, `DNS-01`, `BKP-01`, `MON-01`, and ~15 workstations),
+  each with per-user `bash_history` (epoch-timestamped) and an RFC5424 `syslog.log`; `WEB-01`
+  additionally carries a 115 MB `web_access.log`.
+- **Two Zeek sensors** (`zeek-core-01`, `zeek-dmz-01`) emitting newline-delimited JSON:
+  `conn`, `dns`, `http`, `files`, `ssl`, `x509` (the `conn`/`x509` logs are 100–200 MB each).
+
+This is the dataset that exercises the **log** and **network** agents end-to-end. The Zeek
+adapter streams the large JSON line-by-line with `max_lines` caps and returns bounded
+summaries (top exfil/inbound talkers, file-hash tables), so multi-hundred-MB logs never reach
+the model context. Because the collection is **log-only** (no `/etc`, no full filesystem),
+the persistence tools come up empty and the agent **self-corrects** — pivoting to the sibling
+checks rather than concluding "no persistence." This is the realistic-degradation behavior the
+synthetic fixture cannot exercise.
+
+**What the tools surfaced:** a privileged `WEB-01` shell reading `/etc/shadow` and the finance
+database, **exfiltration of DB dumps to `mosaic-metrics.net`**, and bulk HTTPS exfiltration to
+`23.72.209.230` recovered from the Zeek `conn` summaries — while honestly leaving the initial
+vector LOW-confidence (logs alone did not establish it).
+
+Run it (subscription auth shown; `--auth api` uses `ANTHROPIC_API_KEY`):
+
+```bash
+uv run linuxir analyze --case cases/for577.yaml --auth subscription
+```
+
+> Integrity: `evidence/for577/` is read-only and was never written (0 mutations,
+> [[accuracy-report]] §3b). The raw evidence is gitignored; only the run output is committed.

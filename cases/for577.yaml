@@ -1,0 +1,7 @@
+# FOR577 "log-experiment" — Northbridge Financial scenario (used with the data
+# author's permission). Real Linux multi-host log + Zeek network telemetry.
+# Paths resolve relative to this file.
+case_id: for577
+evidence_scope:
+  - ../evidence/for577/data
+workspace: ../out/for577

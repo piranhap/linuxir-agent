@@ -206,7 +206,7 @@ tests/                        spoliation · adapters · pipeline · subscription
                               intel · expert · reporter  =  113 tests
 ```
 
-See [`docs/accuracy-report.md`](docs/accuracy-report.md) (spoliation + real-evidence run) and
+See [`docs/accuracy-report.md`](docs/accuracy-report.md) (spoliation + two real-evidence runs) and
 [`docs/evidence-dataset.md`](docs/evidence-dataset.md) (what was tested against).
 
 The same gateway, enforcer, tools, prompts, auditor, correlation, and reports are shared by
