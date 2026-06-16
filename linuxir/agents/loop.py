@@ -18,6 +18,23 @@ from typing import Any
 from ..findings import Finding
 from ..gateway import ToolGateway
 
+# Token-usage fields exposed on an Anthropic Messages response's ``usage`` object. We copy
+# only the ones present so a record never carries empty/None counts.
+_USAGE_FIELDS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+)
+
+
+def _usage_to_dict(usage: Any) -> dict[str, int] | None:
+    """Normalize ``response.usage`` to a plain dict of present token counts (or None)."""
+    if usage is None:
+        return None
+    out = {k: v for k in _USAGE_FIELDS if (v := getattr(usage, k, None)) is not None}
+    return out or None
+
 
 @dataclass
 class AgentResult:
@@ -79,11 +96,17 @@ def run_agent(
         if response.stop_reason != "tool_use":
             break
 
+        # The turn's token usage is attributed to every tool call this turn requested, so
+        # the audit log carries per-call token accounting on the raw-API path.
+        turn_usage = _usage_to_dict(getattr(response, "usage", None))
+
         tool_results = []
         for block in response.content:
             if getattr(block, "type", None) != "tool_use":
                 continue
-            result = gateway.dispatch(block.name, dict(block.input), agent=agent_name)
+            result = gateway.dispatch(
+                block.name, dict(block.input), agent=agent_name, usage=turn_usage
+            )
             tool_results.append(
                 {"type": "tool_result", "tool_use_id": block.id, "content": result}
             )

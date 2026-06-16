@@ -159,6 +159,59 @@ established from logs alone, and the agent said so (LOW confidence) rather than 
 
 ---
 
+## 3b-GT. Ground-truth check (added after the run)
+
+The dataset owner's answer key was later obtained and this run correlated against it in
+[[for577-ground-truth]]. It **confirms** the Day-2 theft chain above (WEB-01 root → `/etc/shadow`
++ `cms_ro:Winter2026!` → DB dump → exfil to `mosaic-metrics.net`) and the honesty behaviors — but
+also shows the **`23.72.209.230` "bulk exfiltration" finding is a false positive** (benign
+`svc_backup` backup-verification traffic, a planted red herring) that the auditor did **not** drop.
+Treat that indicator as **retracted**: the auditor grounds a claim against its *cited* output but
+does not yet baseline normal/CDN traffic. The biggest false negative was the entire Day-1
+web-server compromise (webshell + reverse-shell C2 to `103.27.202.92`), honestly reported as
+LOW-confidence initial access. Full wins/gaps: [[for577-ground-truth]].
+
+---
+
+## 3c. Missed artifacts & false negatives (qualitative)
+
+False positives (this report's focus so far) are only half the accuracy picture; this section
+documents the **false-negative** side honestly. Because two of the three datasets have no
+labeled ground truth, recall is **not quantified** — what follows is a qualitative account of
+what was, or could have been, *missed*, and why.
+
+- **The one set with ground truth — the synthetic fixture (§2) — had no missed artifacts.**
+  Every planted persistence mechanism (cron C2, `authorized_keys`, the UID-0 `passwd`
+  backdoor, `ld.so.preload`, `rc.local`, the systemd unit) is surfaced by its corresponding
+  tool, and the deliberately planted "meterpreter" hallucination is dropped. On the only
+  evidence where we know the answer, nothing seeded was missed.
+
+- **Phishing run (§3) — misses were caused by evidence not in scope, not by skipped
+  evidence.** With only an email + pcap and *no* host filesystem, memory, or auth logs,
+  endpoint-level privilege escalation, persistence, and definitive exfiltration were
+  unrecoverable. The agent **flagged these as unconfirmed rather than inventing them** — the
+  correct failure mode, but they remain genuine coverage gaps (e.g. the `.msc` payload's
+  on-host behavior could not be established without the endpoint).
+
+- **FOR577 run (§3b) — one substantive false negative by omission: the initial-access
+  vector.** Logs alone did not establish it, so the agent left it **LOW confidence** rather
+  than fabricating a vector. Host-persistence mechanisms were likewise outside the log-only
+  collection and so were not recovered.
+
+- **Class of misses we cannot yet rule out.** Within *in-scope* evidence, a finding can still
+  be missed if no registered tool inspects the relevant artifact, if a bounded summary
+  (`max_lines` caps on the large Zeek logs) elides a low-frequency signal, or if a specialist
+  exits before exhausting its evidence. These are **not** measured here; quantifying them
+  requires a labeled corpus (see §4, "What is NOT claimed").
+
+**Mitigations in place:** the hypothesis-before-execution record makes a skipped check
+visible in the audit trail; self-correction pivots stop an empty result from being read as
+"nothing there"; and LOW-confidence / out-of-scope conclusions are flagged
+`requires_human_review` rather than silently dropped. These reduce — but do not eliminate —
+false negatives, and we do not claim a recall figure.
+
+---
+
 ## 4. Methodology & honesty
 
 - **Read-only by construction.** Evidence is treated as read-only; the enforcement is code

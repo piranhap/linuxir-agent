@@ -86,3 +86,38 @@ def test_missing_hypothesis_is_tolerated(tmp_path) -> None:
     gw = _gateway(tmp_path)
     gw.dispatch("persistence_check_cron", {}, agent="disk")
     assert _calls(gw)[0]["hypothesis"] is None
+
+
+# -- per-call token usage is attributed to the tool call's audit record ----------
+
+def test_usage_recorded_on_call_when_supplied(tmp_path) -> None:
+    gw = _gateway(tmp_path)
+    gw.dispatch("persistence_check_cron", {}, agent="disk",
+                usage={"input_tokens": 1200, "output_tokens": 48})
+    assert _calls(gw)[0]["usage"] == {"input_tokens": 1200, "output_tokens": 48}
+
+
+def test_usage_absent_when_not_supplied(tmp_path) -> None:
+    # no usage supplied -> the key is omitted entirely (records stay clean on the SDK path).
+    gw = _gateway(tmp_path)
+    gw.dispatch("persistence_check_cron", {}, agent="disk")
+    assert "usage" not in _calls(gw)[0]
+
+
+def test_loop_attributes_turn_usage_to_tool_calls(tmp_path) -> None:
+    # the raw-API loop pulls response.usage and attributes it to that turn's tool calls.
+    from linuxir.agents.loop import run_agent
+    from linuxir.llm import FakeClient, FakeUsage, text, tool_call
+
+    gw = _gateway(tmp_path)
+
+    def responder(kwargs):
+        assistants = sum(1 for m in kwargs["messages"] if m.get("role") == "assistant")
+        if assistants == 0:
+            return tool_call(("t1", "persistence_check_cron", {}),
+                             usage=FakeUsage(input_tokens=1500, output_tokens=60))
+        return text("done")
+
+    run_agent(FakeClient(responder=responder), agent_name="disk", system="persistence",
+              tool_names=["persistence_check_cron"], task="go", gateway=gw, model="m")
+    assert _calls(gw)[0]["usage"] == {"input_tokens": 1500, "output_tokens": 60}

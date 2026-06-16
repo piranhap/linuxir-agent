@@ -1,6 +1,9 @@
 # Build spec / agent operating instructions — kept locally, not shipped in the repo.
 CLAUDE.md
 
+# Personal demo scripts / teleprompter — kept locally, not shipped in the repo.
+docs/demo-script*.md
+
 # Secrets — never commit a real .env (.env.template is the safe, committed stub)
 .env
 .env.*

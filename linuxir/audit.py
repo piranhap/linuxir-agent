@@ -57,27 +57,32 @@ class JSONLAuditLogger:
         detail: str | None = None,
         hypothesis: str | None = None,
         outcome: str | None = None,
+        usage: dict[str, Any] | None = None,
     ) -> None:
         """Record a tool dispatch (``decision`` is ``"allowed"`` or ``"blocked"``).
 
         ``hypothesis`` is the model's stated expectation, captured *before* the tool ran;
         ``outcome`` is a short excerpt of what it actually returned. Together they make the
         hypothesis→outcome pair auditable on a per-call basis.
+
+        ``usage`` carries the token usage of the LLM turn that requested this call
+        (``input_tokens``/``output_tokens``/cache counts), attributed to each tool call that
+        turn emitted; it is only present on the raw-API path, where per-turn usage is exposed.
         """
-        self._append(
-            self.activity_log,
-            {
-                "tool_call_id": tool_call_id,
-                "kind": "tool_call",
-                "agent": agent,
-                "tool": tool,
-                "input": tool_input,
-                "hypothesis": hypothesis,
-                "decision": decision,
-                "outcome": outcome,
-                "detail": detail,
-            },
-        )
+        record = {
+            "tool_call_id": tool_call_id,
+            "kind": "tool_call",
+            "agent": agent,
+            "tool": tool,
+            "input": tool_input,
+            "hypothesis": hypothesis,
+            "decision": decision,
+            "outcome": outcome,
+            "detail": detail,
+        }
+        if usage:
+            record["usage"] = usage
+        self._append(self.activity_log, record)
 
     def log_spoliation(
         self,
