@@ -20,6 +20,7 @@
   </style>
 
   <text x="30" y="34" class="title">LinuxIR Agent — architecture &amp; trust boundaries</text>
+  <text x="930" y="34" text-anchor="end" class="zone" fill="#1a7f37">Pattern: Custom MCP Server + Multi-Agent Framework</text>
 
   <!-- UNTRUSTED ZONE -->
   <rect x="24" y="52" width="912" height="180" class="box" fill="#fff5f5" stroke="#e0a0a0" stroke-dasharray="6 4"/>
@@ -107,4 +108,6 @@
 
   <path class="deny" d="M120,300 C90,360 90,360 120,420" />
   <text x="40" y="362" class="note" fill="#b00020">deny →</text>
+
+  <text x="30" y="670" class="note">Guardrails are ARCHITECTURAL (ConstraintEnforcer in Python at the gateway, model-independent), not prompt-based — a jailbroken or hallucinating model still cannot mutate evidence or escape scope.</text>
 </svg>

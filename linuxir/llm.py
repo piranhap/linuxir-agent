@@ -40,9 +40,18 @@ class ToolUseBlock:
 
 
 @dataclass
+class FakeUsage:
+    """Mirrors the real SDK's ``response.usage`` attribute access for offline tests."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+@dataclass
 class FakeMessage:
     content: list[Any]
     stop_reason: str  # "end_turn" | "tool_use"
+    usage: Any = None
 
 
 class SupportsCreate(Protocol):
@@ -107,7 +116,11 @@ def text(s: str) -> FakeMessage:
     return FakeMessage(content=[TextBlock(text=s)], stop_reason="end_turn")
 
 
-def tool_call(*calls: tuple[str, str, dict]) -> FakeMessage:
-    """Build a tool_use turn from ``(id, name, input)`` tuples."""
+def tool_call(*calls: tuple[str, str, dict], usage: Any = None) -> FakeMessage:
+    """Build a tool_use turn from ``(id, name, input)`` tuples.
+
+    ``usage`` optionally attaches a :class:`FakeUsage`-like object so tests can exercise the
+    per-call token-usage accounting the loop attributes to each tool call.
+    """
     blocks = [ToolUseBlock(id=i, name=n, input=inp) for (i, n, inp) in calls]
-    return FakeMessage(content=blocks, stop_reason="tool_use")
+    return FakeMessage(content=blocks, stop_reason="tool_use", usage=usage)

@@ -118,9 +118,20 @@ class SubscriptionRuntime:
         allowed = [f"mcp__{MCP_SERVER_NAME}__{n}" for n in tool_names]
         options = self._options(system=system, allowed_tools=allowed, with_tools=True)
         final = ""
+        usage: Any = None
+        cost: float | None = None
         async for msg in query(prompt=task, options=options):
             if isinstance(msg, ResultMessage):
                 final = getattr(msg, "result", "") or final
+                # The Agent SDK reports cumulative token usage for the run on the terminal
+                # ResultMessage. Per-individual-call usage is not exposed on this path (the
+                # SDK owns the tool loop), so we log it once per specialist run.
+                usage = getattr(msg, "usage", None) or usage
+                cost = getattr(msg, "total_cost_usd", None) if cost is None else cost
+        if usage is not None:
+            self.audit.log_event(
+                kind="llm_usage", agent=agent_name, usage=usage, cost_usd=cost
+            )
         return final
 
     async def _ask_async(self, system: str, user: str, *, retries: int = 3) -> str:

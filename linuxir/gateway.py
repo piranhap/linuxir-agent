@@ -132,8 +132,19 @@ class ToolGateway:
 
     # -- the chokepoint -----------------------------------------------------------
 
-    def dispatch(self, tool_name: str, tool_input: dict, *, agent: str | None = None) -> str:
-        """Validate, log, and (if permitted) execute a single tool call."""
+    def dispatch(
+        self,
+        tool_name: str,
+        tool_input: dict,
+        *,
+        agent: str | None = None,
+        usage: dict[str, Any] | None = None,
+    ) -> str:
+        """Validate, log, and (if permitted) execute a single tool call.
+
+        ``usage`` is the token usage of the LLM turn that requested this call (raw-API path
+        only); it is attributed to every tool call that turn emitted in the audit log.
+        """
         call_id = str(uuid.uuid4())
         self.context.current_tool_call_id = call_id
 
@@ -161,6 +172,7 @@ class ToolGateway:
                 agent=agent,
                 detail=exc.reason,
                 hypothesis=hypothesis,
+                usage=usage,
             )
             self.audit.log_spoliation(
                 tool=tool_name, tool_input=tool_input, reason=exc.reason, agent=agent
@@ -181,6 +193,7 @@ class ToolGateway:
                 agent=agent,
                 detail=repr(exc),
                 hypothesis=hypothesis,
+                usage=usage,
             )
             return f"[tool error] {tool_name}: {exc!r}"
 
@@ -193,6 +206,7 @@ class ToolGateway:
             agent=agent,
             hypothesis=hypothesis,
             outcome=result[:500],
+            usage=usage,
         )
 
         # Self-correction: if the result matches a known failure shape, record the
