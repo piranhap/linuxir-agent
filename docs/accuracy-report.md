@@ -159,6 +159,20 @@ established from logs alone, and the agent said so (LOW confidence) rather than 
 
 ---
 
+## 3b-GT. Ground-truth check (added after the run)
+
+The dataset owner's answer key was later obtained and this run correlated against it in
+[[for577-ground-truth]]. It **confirms** the Day-2 theft chain above (WEB-01 root → `/etc/shadow`
++ `cms_ro:Winter2026!` → DB dump → exfil to `mosaic-metrics.net`) and the honesty behaviors — but
+also shows the **`23.72.209.230` "bulk exfiltration" finding is a false positive** (benign
+`svc_backup` backup-verification traffic, a planted red herring) that the auditor did **not** drop.
+Treat that indicator as **retracted**: the auditor grounds a claim against its *cited* output but
+does not yet baseline normal/CDN traffic. The biggest false negative was the entire Day-1
+web-server compromise (webshell + reverse-shell C2 to `103.27.202.92`), honestly reported as
+LOW-confidence initial access. Full wins/gaps: [[for577-ground-truth]].
+
+---
+
 ## 3c. Missed artifacts & false negatives (qualitative)
 
 False positives (this report's focus so far) are only half the accuracy picture; this section
